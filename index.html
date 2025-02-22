@@ -5,6 +5,10 @@
     <title>Enhanced Cloth Simulation – Educational</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
   </head>
   <body>
     <script>
@@ -14,28 +18,27 @@
       let spacing = 20;
       let clothPoints = [];
       let clothConstraints = [];
-      // 2D arrays for different sets of points:
-      let grid = [];       // grid corners
-      let horizontal = []; // horizontal midpoints (between grid corners)
-      let vertical = [];   // vertical midpoints
+      // 2D arrays for various point groups.
+      let grid = [];       // grid corner points
+      let horizontal = []; // midpoints on horizontal edges
+      let vertical = [];   // midpoints on vertical edges
       let centers = [];    // center of each cell
 
-      // Simulation parameters (default values updated by sliders)
+      // Simulation parameters (controlled by sliders).
       let friction = 0.98;
       let iterations = 5;
       let gravity = 0.4;
       let weight = 1.0;
-      let windAmplitude = 0.2; // wind amplitude (will be controlled by slider)
-
-      // Additional parameters for self-collision:
-      let collisionThreshold = spacing * 0.5;  
+      
+      // Additional parameters for self-collision.
+      let collisionThreshold = spacing * 0.5;
       let repulsionFactor = 0.5;
 
-      // Obstacle parameters:
+      // Obstacle parameters.
       let obstacleX, obstacleY, obstacleRadius;
 
-      // UI elements (sliders and buttons)
-      let frictionSlider, iterationsSlider, gravitySlider, weightSlider, windSlider;
+      // UI elements.
+      let frictionSlider, iterationsSlider, gravitySlider, weightSlider;
       let resetButton;
 
       // For point dragging.
@@ -65,11 +68,7 @@
         weightSlider.position(20, 180);
         weightSlider.style("width", "200px");
 
-        windSlider = createSlider(0, 1, 0.2, 0.01);
-        windSlider.position(20, 220);
-        windSlider.style("width", "200px");
-
-        // Place the obstacle (for collision demonstration)
+        // Place the obstacle for collision demonstration.
         obstacleX = width / 2;
         obstacleY = 600;
         obstacleRadius = 80;
@@ -77,10 +76,12 @@
         setupCloth();
       }
 
-      // --- Setup Cloth ---
-      // We create a grid of corner points (with the top row pinned), then compute midpoints
-      // and cell centers. After basic structural constraints are added, we add bending constraints
-      // (connecting points two apart) and subdivide each cell into 8 triangles.
+      // --- Setup Cloth Simulation ---
+      // This function creates:
+      // 1. A grid of corner points (with the top row pinned).
+      // 2. Horizontal and vertical midpoints and cell centers.
+      // 3. Structural constraints (between adjacent points), bending constraints (between points two apart),
+      //    and subdivides each cell into 8 triangles.
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -89,9 +90,9 @@
         vertical = [];
         centers = [];
 
-        // Place the cloth so that UI stays above it.
+        // Position the cloth so that UI remains above it.
         let startX = width / 2 - (cols - 1) * spacing / 2;
-        let startY = 300;  // cloth starts lower
+        let startY = 300; // cloth starts lower
 
         // 1. Create grid corner points.
         for (let y = 0; y < rows; y++) {
@@ -99,7 +100,6 @@
           for (let x = 0; x < cols; x++) {
             let px = startX + x * spacing;
             let py = startY + y * spacing;
-            // Pin the top row.
             let pinned = (y === 0);
             clothPoints.push({ x: px, y: py, oldx: px, oldy: py, pinned: pinned });
             grid[y][x] = clothPoints.length - 1;
@@ -155,7 +155,7 @@
           }
         }
 
-        // 5. (Optional) Add basic grid constraints (adjacent corner points).
+        // 5. Add basic structural constraints between adjacent corner points.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = grid[y][x];
@@ -185,7 +185,7 @@
         }
 
         // 7. Subdivide each cell into 8 triangles.
-        // For each cell at (y,x), let:
+        // For a cell at (y,x), let:
         //   A = grid[y][x], B = grid[y][x+1], C = grid[y+1][x], D = grid[y+1][x+1]
         //   E = horizontal[y][x] (top midpoint)
         //   F = horizontal[y+1][x] (bottom midpoint)
@@ -268,7 +268,6 @@
         iterations = iterationsSlider.value();
         gravity = gravitySlider.value();
         weight = weightSlider.value();
-        windAmplitude = windSlider.value();
 
         updateCloth();
 
@@ -277,7 +276,7 @@
         fill(100, 100, 255, 150);
         ellipse(obstacleX, obstacleY, obstacleRadius * 2);
 
-        // Draw constraints.
+        // Draw all constraints.
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -286,40 +285,48 @@
           line(p1.x, p1.y, p2.x, p2.y);
         }
 
-        // Draw points.
+        // Draw all points.
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
 
-        // Display slider labels and parameter values.
+        // --- Educational Overlay ---
+        // Display slider values and a brief description of simulation attributes.
         fill(255);
         noStroke();
         textSize(16);
-        text("Friction: " + nf(friction, 1, 2), 240, 75);
-        text("Iterations: " + iterations, 240, 115);
-        text("Gravity: " + nf(gravity, 1, 2), 240, 155);
-        text("Weight: " + nf(weight, 1, 2), 240, 195);
-        text("Wind: " + nf(windAmplitude, 1, 2), 240, 235);
+        textAlign(LEFT, TOP);
+        let info = 
+          "Friction: " + nf(friction, 1, 2) + "\n" +
+          "Iterations: " + iterations + "\n" +
+          "Gravity: " + nf(gravity, 1, 2) + "\n" +
+          "Weight: " + nf(weight, 1, 2) + "\n\n" +
+          "Attributes:\n" +
+          "- Structural Constraints: Keep grid points at fixed distances.\n" +
+          "- Bending Constraints: Resist sharp folds for a natural drape.\n" +
+          "- Self-Collision: Prevents cloth points from overlapping.\n" +
+          "- Obstacle Collision: Cloth drapes over the blue circle.\n" +
+          "- Point Dragging: Click/tap (below UI) to grab and move a point.";
+        text(info, 240, 60);
 
-        // Educational overlay.
-        textAlign(CENTER, CENTER);
-        text("Enhanced Cloth Simulation\n(Bending constraints, wind force, obstacle collision,\nself‑collision & point dragging)", width / 2, 40);
+        // Title.
+        textAlign(CENTER, TOP);
+        textSize(20);
+        text("Enhanced Cloth Simulation – Educational Mode", width / 2, 20);
       }
 
       // --- Simulation Update ---
       function updateCloth() {
-        // Verlet integration with wind.
+        // Verlet integration (without wind).
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * friction;
             let vy = (p.y - p.oldy) * friction;
             p.oldx = p.x;
             p.oldy = p.y;
-            // Wind force oscillates over time.
-            let windForce = sin(frameCount * 0.01) * windAmplitude;
-            p.x += vx + windForce;
+            p.x += vx;
             p.y += vy + gravity * weight;
           }
         }
@@ -344,7 +351,7 @@
             }
           }
         }
-        // Self-collision: push points apart if too close.
+        // Self-collision: gently repel points that are too close.
         doSelfCollision();
         // Obstacle collision: push points out of the obstacle.
         doObstacleCollision();
@@ -396,7 +403,7 @@
 
       // --- Point Dragging ---
       function mousePressed() {
-        // Only allow dragging if the press is below the UI area.
+        // Only allow dragging if click/touch is below the UI area.
         if (mouseY > 250) {
           let nearestIndex = -1;
           let nearestDist = Infinity;
