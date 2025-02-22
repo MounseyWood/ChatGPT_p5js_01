@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Cloth Simulation with Weight Slider</title>
+    <title>Enhanced Cloth Simulation with Self-Collision & Point Dragging</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
@@ -12,60 +12,68 @@
       let cols = 30;
       let rows = 20;
       let spacing = 20;
-      
+
       // Arrays for simulation points and constraints.
       let clothPoints = [];
       let clothConstraints = [];
-      
-      // 2D arrays to store indices for grid corners, horizontal midpoints,
-      // vertical midpoints, and cell centers.
+
+      // 2D arrays for indices of:
+      // - grid: corner points
+      // - horizontal: midpoints on horizontal edges
+      // - vertical: midpoints on vertical edges
+      // - centers: center point of each cell
       let grid = [];
       let horizontal = [];
       let vertical = [];
       let centers = [];
-      
-      // Simulation parameters (default values updated by sliders).
+
+      // Simulation parameters (default values controlled by sliders).
       let friction = 0.98;
       let iterations = 5;
       let gravity = 0.4;
-      let weight = 1.0; // weight multiplier
-      
-      // Slider variables.
+      let weight = 1.0;
+
+      // Additional parameters for self-collision.
+      let collisionThreshold = spacing * 0.5;  // e.g., 10 pixels if spacing is 20
+      let repulsionFactor = 0.5; // How strongly to push points apart when colliding
+
+      // UI elements.
       let frictionSlider, iterationsSlider, gravitySlider, weightSlider;
-      
-      // UI element: reset button.
       let resetButton;
-      
+
+      // For point dragging.
+      let dragPointIndex = null;
+
       function setup() {
         createCanvas(windowWidth, windowHeight);
-        
-        // Reset button.
+
+        // Create a reset button.
         resetButton = createButton("Reset Cloth");
         resetButton.position(20, 20);
         resetButton.style("font-size", "16px");
         resetButton.mousePressed(resetCloth);
-        
+
         // Create sliders.
         frictionSlider = createSlider(0.90, 1.0, 0.98, 0.01);
         frictionSlider.position(20, 60);
         frictionSlider.style("width", "200px");
-        
+
         iterationsSlider = createSlider(1, 10, 5, 1);
         iterationsSlider.position(20, 100);
         iterationsSlider.style("width", "200px");
-        
+
         gravitySlider = createSlider(0, 1, 0.4, 0.01);
         gravitySlider.position(20, 140);
         gravitySlider.style("width", "200px");
-        
+
         weightSlider = createSlider(0.5, 2.0, 1.0, 0.1);
         weightSlider.position(20, 180);
         weightSlider.style("width", "200px");
-        
+
         setupCloth();
       }
-      
-      // Sets up the cloth simulation with 8-triangle cells.
+
+      // Sets up the cloth simulation with cells subdivided into 8 triangles.
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -73,24 +81,24 @@
         horizontal = [];
         vertical = [];
         centers = [];
-        
-        // Position cloth centered horizontally and below the UI.
+
+        // Position the cloth centered horizontally and leave room for the UI.
         let startX = width / 2 - (cols - 1) * spacing / 2;
         let startY = 220;
-        
-        // 1. Create grid corners.
+
+        // 1. Create grid corner points.
         for (let y = 0; y < rows; y++) {
           grid[y] = [];
           for (let x = 0; x < cols; x++) {
             let px = startX + x * spacing;
             let py = startY + y * spacing;
-            // Pin the top row.
+            // Pin the top row so the cloth hangs.
             let pinned = (y === 0);
             clothPoints.push({ x: px, y: py, oldx: px, oldy: py, pinned: pinned });
             grid[y][x] = clothPoints.length - 1;
           }
         }
-        
+
         // 2. Compute horizontal midpoints.
         for (let y = 0; y < rows; y++) {
           horizontal[y] = [];
@@ -105,7 +113,7 @@
             horizontal[y][x] = clothPoints.length - 1;
           }
         }
-        
+
         // 3. Compute vertical midpoints.
         for (let y = 0; y < rows - 1; y++) {
           vertical[y] = [];
@@ -120,7 +128,7 @@
             vertical[y][x] = clothPoints.length - 1;
           }
         }
-        
+
         // 4. Compute cell centers.
         for (let y = 0; y < rows - 1; y++) {
           centers[y] = [];
@@ -139,8 +147,8 @@
             centers[y][x] = clothPoints.length - 1;
           }
         }
-        
-        // (Optional) Add constraints between adjacent grid corners.
+
+        // (Optional) Add basic grid constraints between adjacent corner points.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = grid[y][x];
@@ -152,8 +160,9 @@
             }
           }
         }
-        
+
         // 5. Subdivide each cell into 8 triangles.
+        // For cell at (y,x): corners (A, B, C, D); midpoints (E: top, F: bottom, G: left, H: right); center (I).
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let A = grid[y][x];
@@ -165,47 +174,47 @@
             let G = vertical[y][x];            // left midpoint
             let H = vertical[y][x + 1];        // right midpoint
             let I = centers[y][x];             // cell center
-            
+
             // Top-left corner triangles.
             addConstraint(A, E, distBetween(A, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, A, distBetween(I, A));
-            
+
             addConstraint(A, G, distBetween(A, G));
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, A, distBetween(I, A));
-            
+
             // Top-right corner triangles.
             addConstraint(B, E, distBetween(B, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, B, distBetween(I, B));
-            
+
             addConstraint(B, H, distBetween(B, H));
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, B, distBetween(I, B));
-            
+
             // Bottom-left corner triangles.
             addConstraint(C, G, distBetween(C, G));
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, C, distBetween(I, C));
-            
+
             addConstraint(C, F, distBetween(C, F));
             addConstraint(F, I, distBetween(F, I));
             addConstraint(I, C, distBetween(I, C));
-            
+
             // Bottom-right corner triangles.
             addConstraint(D, H, distBetween(D, H));
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, D, distBetween(I, D));
-            
+
             addConstraint(D, F, distBetween(D, F));
             addConstraint(F, I, distBetween(F, I));
             addConstraint(I, D, distBetween(I, D));
           }
         }
       }
-      
-      // Helper: adds a constraint if not already present.
+
+      // Helper: adds a constraint if it doesn't already exist.
       function addConstraint(i, j, len) {
         let a = min(i, j);
         let b = max(i, j);
@@ -214,25 +223,25 @@
         }
         clothConstraints.push({ p1: a, p2: b, length: len });
       }
-      
-      // Helper: compute distance between two points given their indices.
+
+      // Helper: compute distance between two points (given their indices).
       function distBetween(i1, i2) {
         let p1 = clothPoints[i1];
         let p2 = clothPoints[i2];
         return sqrt(sq(p2.x - p1.x) + sq(p2.y - p1.y));
       }
-      
+
       function draw() {
         background(30);
-        
-        // Update parameters from sliders.
+
+        // Update simulation parameters from sliders.
         friction = frictionSlider.value();
         iterations = iterationsSlider.value();
         gravity = gravitySlider.value();
         weight = weightSlider.value();
-        
+
         updateCloth();
-        
+
         // Draw constraints.
         stroke(255);
         strokeWeight(2);
@@ -241,14 +250,14 @@
           let p2 = clothPoints[c.p2];
           line(p1.x, p1.y, p2.x, p2.y);
         }
-        
+
         // Draw points.
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
-        
+
         // Display slider labels.
         fill(255);
         noStroke();
@@ -258,11 +267,12 @@
         text("Gravity: " + nf(gravity, 1, 2), 240, 155);
         text("Weight: " + nf(weight, 1, 2), 240, 195);
         textAlign(CENTER, CENTER);
-        text("Touch/drag to poke the cloth. Press 'Reset Cloth' to restart.", width / 2, 40);
+        text("Touch/drag to poke or drag points. Press 'Reset Cloth' to restart.", width / 2, 40);
       }
-      
-      // Verlet integration and constraint relaxation.
+
+      // Main simulation update: Verlet integration, constraint relaxation, and self-collision.
       function updateCloth() {
+        // Verlet integration.
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * friction;
@@ -270,10 +280,10 @@
             p.oldx = p.x;
             p.oldy = p.y;
             p.x += vx;
-            // Apply gravity multiplied by weight.
             p.y += vy + gravity * weight;
           }
         }
+        // Constraint relaxation.
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
@@ -294,32 +304,77 @@
             }
           }
         }
+        // Self-collision: push points apart if they get too close.
+        doSelfCollision();
       }
-      
-      // Touch interaction: poke nearby points if not in UI area.
-      function touchMoved() {
-        if (touches.length > 0 && touches[0].y < 220) return;
-        for (let t of touches) {
-          let tx = t.x;
-          let ty = t.y;
-          for (let p of clothPoints) {
-            let d = dist(tx, ty, p.x, p.y);
-            let radius = 50;
-            if (d < radius) {
-              let strength = (radius - d) * 0.2;
-              let angle = atan2(p.y - ty, p.x - tx);
-              p.x += cos(angle) * strength;
-              p.y += sin(angle) * strength;
+
+      // Simple self-collision: for each pair of points, if they are closer than the threshold, push them apart.
+      function doSelfCollision() {
+        for (let i = 0; i < clothPoints.length; i++) {
+          for (let j = i + 1; j < clothPoints.length; j++) {
+            let p1 = clothPoints[i];
+            let p2 = clothPoints[j];
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let d = sqrt(dx * dx + dy * dy);
+            if (d < collisionThreshold && d > 0) {
+              let overlap = collisionThreshold - d;
+              let angle = atan2(dy, dx);
+              if (!p1.pinned && !p2.pinned) {
+                p1.x -= cos(angle) * overlap * repulsionFactor * 0.5;
+                p1.y -= sin(angle) * overlap * repulsionFactor * 0.5;
+                p2.x += cos(angle) * overlap * repulsionFactor * 0.5;
+                p2.y += sin(angle) * overlap * repulsionFactor * 0.5;
+              } else if (!p1.pinned && p2.pinned) {
+                p1.x -= cos(angle) * overlap * repulsionFactor;
+                p1.y -= sin(angle) * overlap * repulsionFactor;
+              } else if (p1.pinned && !p2.pinned) {
+                p2.x += cos(angle) * overlap * repulsionFactor;
+                p2.y += sin(angle) * overlap * repulsionFactor;
+              }
             }
           }
         }
-        return false;
       }
-      
+
+      // --- Point Dragging ---
+      // When the user presses (mouse or touch), find a nearby point to drag.
+      function mousePressed() {
+        // Only consider clicks/touches outside the UI area.
+        if (mouseY > 220) {
+          let nearestIndex = -1;
+          let nearestDist = Infinity;
+          for (let i = 0; i < clothPoints.length; i++) {
+            let p = clothPoints[i];
+            let d = dist(mouseX, mouseY, p.x, p.y);
+            if (d < 15 && d < nearestDist) {
+              nearestIndex = i;
+              nearestDist = d;
+            }
+          }
+          if (nearestIndex !== -1) {
+            dragPointIndex = nearestIndex;
+          }
+        }
+      }
+
+      function mouseDragged() {
+        if (dragPointIndex !== null) {
+          let p = clothPoints[dragPointIndex];
+          p.x = mouseX;
+          p.y = mouseY;
+        }
+      }
+
+      function mouseReleased() {
+        dragPointIndex = null;
+      }
+
+      // Reset simulation.
       function resetCloth() {
         setupCloth();
       }
-      
+
       function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
         setupCloth();
