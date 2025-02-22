@@ -2,61 +2,57 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Interactive Cloth Simulation with Reset</title>
-    <!-- Load p5.js from a CDN -->
+    <title>Interactive Triangular Cloth Simulation</title>
+    <!-- p5.js library from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
   <body>
     <script>
-      // Increase fabric size: more columns/rows and larger spacing.
+      // Grid parameters – larger swatch
       let cols = 30;
-      let rows = 30;
+      let rows = 20;
       let spacing = 20;
-
-      // Arrays for cloth points & constraints.
+      
+      // Arrays for cloth points and constraints.
       let clothPoints = [];
       let clothConstraints = [];
-
+      
       // Physics parameters.
       let friction = 0.98;
       let iterations = 5;
-
-      // Gravity as a 2D vector (will be updated by device orientation).
+      
+      // Gravity vector, updated via device tilt.
       let gravityX = 0;
-      let gravityY = 0.4; // a slight default downward gravity
-
-      // Reset button reference.
+      let gravityY = 0.4;
+      
+      // UI buttons.
       let resetButton;
-
+      let accelButton;
+      
       function setup() {
         createCanvas(windowWidth, windowHeight);
-
-        // Create a reset button in the top left.
+        
+        // Reset button to reinitialize the cloth.
         resetButton = createButton("Reset Cloth");
         resetButton.position(20, 20);
         resetButton.style("font-size", "16px");
         resetButton.mousePressed(resetCloth);
-
-        // Request device motion permission on iOS (if needed).
-        if (
-          typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function"
-        ) {
-          DeviceMotionEvent.requestPermission().catch(() => {
-            console.log("Device motion permission was not granted.");
-          });
-        }
-
+        
+        // Button to activate the accelerometer.
+        accelButton = createButton("Activate Accelerometer");
+        accelButton.position(20, 60);
+        accelButton.style("font-size", "16px");
+        accelButton.mousePressed(activateAccelerometer);
+        
         setupCloth();
       }
-
+      
       function draw() {
         background(30);
-
-        // Update the cloth physics.
+        
         updateCloth();
-
-        // Draw the cloth constraints (lines between points).
+        
+        // Draw all constraints as lines.
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -64,109 +60,117 @@
           let p2 = clothPoints[c.p2];
           line(p1.x, p1.y, p2.x, p2.y);
         }
-
-        // Optionally, draw the points as small circles.
+        
+        // Optionally draw the points as small circles.
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
-
-        // Instructions.
+        
+        // On-screen instructions.
         fill(255);
         noStroke();
         textSize(16);
         textAlign(CENTER, CENTER);
         text(
-          "Tilt your device to change gravity.\nTouch or drag on the cloth to poke it.",
+          "Tilt your device to change gravity.\nTouch/drag on the cloth to poke it.",
           width / 2,
-          50
+          40
         );
       }
-
-      // Create the cloth grid and constraints.
+      
+      // Create a grid of points and constraints.
+      // Adds horizontal, vertical, and diagonal constraints (the latter for triangulation).
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
-
-        // Position the swatch centered horizontally and starting a bit lower to allow room for the reset button.
+        
+        // Center the cloth horizontally and leave room at the top.
         let startX = width / 2 - (cols * spacing) / 2;
         let startY = 100;
-
-        // Create a grid of points.
+        
+        // Create grid of points. Pin the entire top row.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let px = x * spacing + startX;
             let py = y * spacing + startY;
-            let pinned = (y === 0); // Pin the entire top row.
-
+            let pinned = (y === 0);
             clothPoints.push({
               x: px,
               y: py,
               oldx: px,
               oldy: py,
-              pinned: pinned,
+              pinned: pinned
             });
           }
         }
-
-        // Create horizontal & vertical constraints.
+        
+        // Create constraints.
+        // Horizontal & vertical constraints.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = x + y * cols;
-
-            // Horizontal constraint.
+            // Horizontal neighbor.
             if (x < cols - 1) {
               clothConstraints.push({
                 p1: idx,
                 p2: idx + 1,
-                length: spacing,
+                length: spacing
               });
             }
-
-            // Vertical constraint.
+            // Vertical neighbor.
             if (y < rows - 1) {
               clothConstraints.push({
                 p1: idx,
                 p2: idx + cols,
-                length: spacing,
+                length: spacing
+              });
+            }
+            // Diagonals: add both to "cross" the square.
+            if (x < cols - 1 && y < rows - 1) {
+              // Diagonal from top-left to bottom-right.
+              clothConstraints.push({
+                p1: idx,
+                p2: idx + cols + 1,
+                length: sqrt(sq(spacing) + sq(spacing))
+              });
+              // Diagonal from top-right to bottom-left.
+              clothConstraints.push({
+                p1: idx + 1,
+                p2: idx + cols,
+                length: sqrt(sq(spacing) + sq(spacing))
               });
             }
           }
         }
       }
-
-      // Update cloth physics using Verlet integration & constraint relaxation.
+      
+      // Verlet integration and constraint satisfaction.
       function updateCloth() {
         // Verlet integration.
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * friction;
             let vy = (p.y - p.oldy) * friction;
-
             p.oldx = p.x;
             p.oldy = p.y;
-
-            // Apply device-tilt gravity.
             p.x += vx + gravityX;
             p.y += vy + gravityY;
           }
         }
-
-        // Constraint relaxation (multiple iterations for a stiffer cloth).
+        
+        // Relax constraints multiple times per frame.
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
             let p2 = clothPoints[c.p2];
-
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
             let dist = sqrt(dx * dx + dy * dy);
             let diff = (dist - c.length) / dist;
-
             let offsetX = dx * 0.5 * diff;
             let offsetY = dy * 0.5 * diff;
-
             if (!p1.pinned) {
               p1.x += offsetX;
               p1.y += offsetY;
@@ -178,17 +182,17 @@
           }
         }
       }
-
-      // Update gravity based on device tilt.
+      
+      // p5 event: update gravity based on device tilt.
       function deviceMoved() {
         if (accelerationX !== undefined && accelerationY !== undefined) {
-          // Map device acceleration to a small gravity vector.
+          // Map the device's acceleration to a smaller gravity vector.
           gravityX = map(accelerationY, -90, 90, -0.5, 0.5);
           gravityY = map(accelerationX, -90, 90, 0.5, -0.5);
         }
       }
-
-      // On touch, "poke" the cloth by pushing nearby points.
+      
+      // On touch, "poke" the cloth points near the touch location.
       function touchMoved() {
         for (let t of touches) {
           let tx = t.x;
@@ -204,16 +208,35 @@
             }
           }
         }
-        // Prevent default scrolling.
+        // Prevent scrolling on touch devices.
         return false;
       }
-
-      // Reset the cloth simulation.
+      
+      // Reinitialize the cloth.
       function resetCloth() {
         setupCloth();
       }
-
-      // Handle window resizing.
+      
+      // Activate accelerometer by requesting permission.
+      function activateAccelerometer() {
+        if (
+          typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function"
+        ) {
+          DeviceMotionEvent.requestPermission()
+            .then((response) => {
+              if (response === "granted") {
+                console.log("Accelerometer activated");
+                accelButton.hide();
+              } else {
+                console.log("Permission not granted for accelerometer.");
+              }
+            })
+            .catch(console.error);
+        }
+      }
+      
+      // When the window is resized, reset the cloth.
       function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
         setupCloth();
