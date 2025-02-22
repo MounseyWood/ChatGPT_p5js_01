@@ -1,155 +1,155 @@
-<script>
-  let cloth = [];
-  let clothConstraints = [];
-  let cols = 20;
-  let rows = 15;
-  let spacing = 15;
-  let clothG;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>p5.js Cloth Simulation</title>
+    <!-- p5.js from the official CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // Number of points in the horizontal (cols) and vertical (rows) directions
+      let cols = 20;
+      let rows = 15;
 
-  function setup() {
-    createCanvas(windowWidth, windowHeight, WEBGL);
-    clothG = createGraphics(windowWidth, windowHeight);
-    setupCloth();
-  }
+      // Distance between points
+      let spacing = 15;
 
-  function draw() {
-    background(0);
+      // Arrays to hold cloth points and the constraints between them
+      let clothPoints = [];
+      let clothConstraints = [];
 
-    // 1. Parallax planes
-    drawParallax();
+      // Simulation parameters
+      let gravity = 0.5;
+      let friction = 0.99;
+      // Number of constraint relaxations per frame (higher = stiffer cloth)
+      let iterations = 5;
 
-    // 2. Rotating 3D box
-    push();
-      rotateY(frameCount * 0.01);
-      rotateX(frameCount * 0.01);
-      fill(200, 50, 50);
-      noStroke();
-      box(100);
-    pop();
+      function setup() {
+        createCanvas(windowWidth, windowHeight);
+        // Initialize the cloth (points + constraints)
+        setupCloth();
+      }
 
-    // 3. Cloth simulation (drawn on clothG)
-    clothG.clear();
-    clothG.stroke(255);
-    clothG.strokeWeight(2);
-    updateCloth();
-    for (let c of clothConstraints) {
-      let p1 = cloth[c.p1];
-      let p2 = cloth[c.p2];
-      clothG.line(p1.x, p1.y, p2.x, p2.y);
-    }
-    for (let p of cloth) {
-      clothG.fill(255, 0, 0);
-      clothG.noStroke();
-      clothG.ellipse(p.x, p.y, 4);
-    }
-    push();
-      translate(-width / 2, -height / 2);
-      image(clothG, 0, 0, width, height);
-    pop();
+      function draw() {
+        background(30);
 
-    // 4. Kinetic text
-    drawKineticText();
+        // 1. Update the cloth’s physics
+        updateCloth();
 
-    // Remove or comment out the filter if it causes issues in WEBGL
-    // filter(POSTERIZE, 4);
-  }
+        // 2. Draw the cloth
+        stroke(255);
+        strokeWeight(2);
+        for (let c of clothConstraints) {
+          let p1 = clothPoints[c.p1];
+          let p2 = clothPoints[c.p2];
+          line(p1.x, p1.y, p2.x, p2.y);
+        }
 
-  function drawParallax() {
-    let numLayers = 3;
-    for (let i = 0; i < numLayers; i++) {
-      push();
-        let z = -500 + i * 200;
-        translate(0, 0, z);
-        let factor = (i + 1) / numLayers;
-        let offsetX = map(mouseX, 0, width, -20, 20) * factor;
-        let offsetY = map(mouseY, 0, height, -20, 20) * factor;
-        translate(offsetX, offsetY, 0);
-        fill(50 + i * 40, 100, 150);
+        // Optionally draw the points as small circles
         noStroke();
-        plane(width, height);
-      pop();
-    }
-  }
-
-  function drawKineticText() {
-    push();
-      resetMatrix();
-      textAlign(CENTER, CENTER);
-      textSize(48);
-      fill(255);
-      let tX = windowWidth / 2 + sin(frameCount * 0.05) * 100;
-      let tY = windowHeight / 2 + cos(frameCount * 0.05) * 50;
-      text("Creative Code", tX, tY);
-    pop();
-  }
-
-  function setupCloth() {
-    cloth = [];
-    clothConstraints = [];
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        let px = x * spacing + (windowWidth / 2 - (cols * spacing) / 2);
-        let py = y * spacing + (windowHeight - rows * spacing - 50);
-        cloth.push({
-          x: px,
-          y: py,
-          oldx: px,
-          oldy: py,
-          pinned: y === 0
-        });
-      }
-    }
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        let idx = x + y * cols;
-        if (x < cols - 1) {
-          clothConstraints.push({ p1: idx, p2: idx + 1, length: spacing });
-        }
-        if (y < rows - 1) {
-          clothConstraints.push({ p1: idx, p2: idx + cols, length: spacing });
+        fill(255, 0, 0);
+        for (let p of clothPoints) {
+          ellipse(p.x, p.y, 4, 4);
         }
       }
-    }
-  }
 
-  function updateCloth() {
-    let gravity = 0.5;
-    let friction = 0.99;
-    for (let p of cloth) {
-      if (!p.pinned) {
-        let vx = (p.x - p.oldx) * friction;
-        let vy = (p.y - p.oldy) * friction;
-        p.oldx = p.x;
-        p.oldy = p.y;
-        p.x += vx;
-        p.y += vy + gravity;
-      }
-    }
-    for (let i = 0; i < 5; i++) {
-      for (let c of clothConstraints) {
-        let p1 = cloth[c.p1];
-        let p2 = cloth[c.p2];
-        let dx = p2.x - p1.x;
-        let dy = p2.y - p1.y;
-        let dist = sqrt(dx * dx + dy * dy);
-        let diff = (dist - c.length) / dist;
-        let offsetX = dx * 0.5 * diff;
-        let offsetY = dy * 0.5 * diff;
-        if (!p1.pinned) {
-          p1.x += offsetX;
-          p1.y += offsetY;
-        }
-        if (!p2.pinned) {
-          p2.x -= offsetX;
-          p2.y -= offsetY;
-        }
-      }
-    }
-  }
+      // Create the grid of points and the constraints between them
+      function setupCloth() {
+        clothPoints = [];
+        clothConstraints = [];
 
-  function windowResized() {
-    resizeCanvas(windowWidth, windowHeight, WEBGL);
-    clothG.resizeCanvas(windowWidth, windowHeight);
-    setupCloth();
-  }
-</script>
+        // Create a grid of points
+        // Pin the entire top row, or just corners if you prefer
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            let px = x * spacing + (width / 2 - (cols * spacing) / 2);
+            let py = y * spacing + 50; // start 50px from top
+            let pinned = (y === 0);    // pin the entire top row
+
+            clothPoints.push({
+              x: px,
+              y: py,
+              oldx: px,
+              oldy: py,
+              pinned: pinned
+            });
+          }
+        }
+
+        // Create horizontal & vertical constraints
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            let idx = x + y * cols;
+
+            // Horizontal constraint: connect point to the one on its right
+            if (x < cols - 1) {
+              clothConstraints.push({
+                p1: idx,
+                p2: idx + 1,
+                length: spacing
+              });
+            }
+
+            // Vertical constraint: connect point to the one below
+            if (y < rows - 1) {
+              clothConstraints.push({
+                p1: idx,
+                p2: idx + cols,
+                length: spacing
+              });
+            }
+          }
+        }
+      }
+
+      // Update positions with Verlet integration & satisfy constraints
+      function updateCloth() {
+        // 1. Verlet integration
+        for (let p of clothPoints) {
+          if (!p.pinned) {
+            let vx = (p.x - p.oldx) * friction;
+            let vy = (p.y - p.oldy) * friction;
+
+            p.oldx = p.x;
+            p.oldy = p.y;
+
+            p.x += vx;
+            p.y += vy + gravity;
+          }
+        }
+
+        // 2. Satisfy constraints (multiple iterations for stiffness)
+        for (let i = 0; i < iterations; i++) {
+          for (let c of clothConstraints) {
+            let p1 = clothPoints[c.p1];
+            let p2 = clothPoints[c.p2];
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let dist = sqrt(dx * dx + dy * dy);
+            let diff = (dist - c.length) / dist;
+
+            // Half of the offset goes to each point
+            let offsetX = dx * 0.5 * diff;
+            let offsetY = dy * 0.5 * diff;
+
+            if (!p1.pinned) {
+              p1.x += offsetX;
+              p1.y += offsetY;
+            }
+            if (!p2.pinned) {
+              p2.x -= offsetX;
+              p2.y -= offsetY;
+            }
+          }
+        }
+      }
+
+      // Handle browser resizing
+      function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
+        setupCloth();
+      }
+    </script>
+  </body>
+</html>
