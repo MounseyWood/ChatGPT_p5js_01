@@ -2,57 +2,159 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Interactive Triangular Cloth Simulation</title>
-    <!-- p5.js library from CDN -->
+    <title>Cloth Simulation with Center Points</title>
+    <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
   <body>
     <script>
-      // Grid parameters – larger swatch
+      // Grid parameters: more columns/rows for a larger fabric.
       let cols = 30;
       let rows = 20;
       let spacing = 20;
-      
-      // Arrays for cloth points and constraints.
+
+      // Arrays to store all simulation points and constraints.
       let clothPoints = [];
       let clothConstraints = [];
-      
-      // Physics parameters.
+
+      // We'll use 2D arrays to remember indices of grid corner points and cell center points.
+      let grid = [];    // grid[y][x] stores index of the corner point.
+      let centers = []; // centers[y][x] stores index of the center for cell at (x,y)
+
+      // Simulation parameters.
       let friction = 0.98;
       let iterations = 5;
-      
-      // Gravity vector, updated via device tilt.
-      let gravityX = 0;
-      let gravityY = 0.4;
-      
-      // UI buttons.
+      let gravity = 0.4;
+
+      // UI: reset button.
       let resetButton;
-      let accelButton;
-      
+
       function setup() {
         createCanvas(windowWidth, windowHeight);
-        
-        // Reset button to reinitialize the cloth.
         resetButton = createButton("Reset Cloth");
         resetButton.position(20, 20);
         resetButton.style("font-size", "16px");
         resetButton.mousePressed(resetCloth);
-        
-        // Button to activate the accelerometer.
-        accelButton = createButton("Activate Accelerometer");
-        accelButton.position(20, 60);
-        accelButton.style("font-size", "16px");
-        accelButton.mousePressed(activateAccelerometer);
-        
         setupCloth();
       }
-      
+
+      // Sets up the cloth simulation:
+      // 1. Creates a grid of corner points.
+      // 2. Creates a center point for each cell.
+      // 3. Adds constraints between adjacent grid points and between each center and its four corners.
+      function setupCloth() {
+        clothPoints = [];
+        clothConstraints = [];
+        grid = [];
+        centers = [];
+
+        // Determine starting positions to center the cloth.
+        let startX = width / 2 - (cols - 1) * spacing / 2;
+        let startY = 100;
+
+        // Create grid corner points.
+        for (let y = 0; y < rows; y++) {
+          grid[y] = [];
+          for (let x = 0; x < cols; x++) {
+            let px = startX + x * spacing;
+            let py = startY + y * spacing;
+            // Pin the top row so the fabric hangs.
+            let pinned = (y === 0);
+            let point = { x: px, y: py, oldx: px, oldy: py, pinned: pinned };
+            clothPoints.push(point);
+            grid[y][x] = clothPoints.length - 1;
+          }
+        }
+
+        // Create center points for each cell (each square between grid points).
+        // There are (rows-1) x (cols-1) cells.
+        for (let y = 0; y < rows - 1; y++) {
+          centers[y] = [];
+          for (let x = 0; x < cols - 1; x++) {
+            // Calculate the average position of the four surrounding grid corners.
+            let idxTL = grid[y][x];
+            let idxTR = grid[y][x + 1];
+            let idxBL = grid[y + 1][x];
+            let idxBR = grid[y + 1][x + 1];
+            let cx =
+              (clothPoints[idxTL].x +
+                clothPoints[idxTR].x +
+                clothPoints[idxBL].x +
+                clothPoints[idxBR].x) /
+              4;
+            let cy =
+              (clothPoints[idxTL].y +
+                clothPoints[idxTR].y +
+                clothPoints[idxBL].y +
+                clothPoints[idxBR].y) /
+              4;
+            // Center points are not pinned.
+            let point = { x: cx, y: cy, oldx: cx, oldy: cy, pinned: false };
+            clothPoints.push(point);
+            centers[y][x] = clothPoints.length - 1;
+          }
+        }
+
+        // --- Add constraints ---
+
+        // 1. Connect grid points horizontally and vertically.
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            let idx = grid[y][x];
+            // Horizontal connection.
+            if (x < cols - 1) {
+              let rightIdx = grid[y][x + 1];
+              clothConstraints.push({ p1: idx, p2: rightIdx, length: spacing });
+            }
+            // Vertical connection.
+            if (y < rows - 1) {
+              let bottomIdx = grid[y + 1][x];
+              clothConstraints.push({ p1: idx, p2: bottomIdx, length: spacing });
+            }
+          }
+        }
+
+        // 2. For each cell, connect the center point to the four corner grid points.
+        // The ideal distance from a cell center to any corner is:
+        //   sqrt((spacing/2)² + (spacing/2)²) = spacing/√2
+        let centerLength = spacing / sqrt(2);
+        for (let y = 0; y < rows - 1; y++) {
+          for (let x = 0; x < cols - 1; x++) {
+            let centerIdx = centers[y][x];
+            let topLeft = grid[y][x];
+            let topRight = grid[y][x + 1];
+            let bottomLeft = grid[y + 1][x];
+            let bottomRight = grid[y + 1][x + 1];
+            clothConstraints.push({
+              p1: centerIdx,
+              p2: topLeft,
+              length: centerLength,
+            });
+            clothConstraints.push({
+              p1: centerIdx,
+              p2: topRight,
+              length: centerLength,
+            });
+            clothConstraints.push({
+              p1: centerIdx,
+              p2: bottomLeft,
+              length: centerLength,
+            });
+            clothConstraints.push({
+              p1: centerIdx,
+              p2: bottomRight,
+              length: centerLength,
+            });
+          }
+        }
+      }
+
       function draw() {
         background(30);
-        
+
         updateCloth();
-        
-        // Draw all constraints as lines.
+
+        // Draw constraints (lines between points).
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -60,115 +162,48 @@
           let p2 = clothPoints[c.p2];
           line(p1.x, p1.y, p2.x, p2.y);
         }
-        
-        // Optionally draw the points as small circles.
+
+        // Optionally draw the points.
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
-        
+
         // On-screen instructions.
         fill(255);
         noStroke();
         textSize(16);
         textAlign(CENTER, CENTER);
         text(
-          "Tilt your device to change gravity.\nTouch/drag on the cloth to poke it.",
+          "Touch/drag to poke the cloth. Press 'Reset Cloth' to restart.",
           width / 2,
           40
         );
       }
-      
-      // Create a grid of points and constraints.
-      // Adds horizontal, vertical, and diagonal constraints (the latter for triangulation).
-      function setupCloth() {
-        clothPoints = [];
-        clothConstraints = [];
-        
-        // Center the cloth horizontally and leave room at the top.
-        let startX = width / 2 - (cols * spacing) / 2;
-        let startY = 100;
-        
-        // Create grid of points. Pin the entire top row.
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++) {
-            let px = x * spacing + startX;
-            let py = y * spacing + startY;
-            let pinned = (y === 0);
-            clothPoints.push({
-              x: px,
-              y: py,
-              oldx: px,
-              oldy: py,
-              pinned: pinned
-            });
-          }
-        }
-        
-        // Create constraints.
-        // Horizontal & vertical constraints.
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++) {
-            let idx = x + y * cols;
-            // Horizontal neighbor.
-            if (x < cols - 1) {
-              clothConstraints.push({
-                p1: idx,
-                p2: idx + 1,
-                length: spacing
-              });
-            }
-            // Vertical neighbor.
-            if (y < rows - 1) {
-              clothConstraints.push({
-                p1: idx,
-                p2: idx + cols,
-                length: spacing
-              });
-            }
-            // Diagonals: add both to "cross" the square.
-            if (x < cols - 1 && y < rows - 1) {
-              // Diagonal from top-left to bottom-right.
-              clothConstraints.push({
-                p1: idx,
-                p2: idx + cols + 1,
-                length: sqrt(sq(spacing) + sq(spacing))
-              });
-              // Diagonal from top-right to bottom-left.
-              clothConstraints.push({
-                p1: idx + 1,
-                p2: idx + cols,
-                length: sqrt(sq(spacing) + sq(spacing))
-              });
-            }
-          }
-        }
-      }
-      
-      // Verlet integration and constraint satisfaction.
+
+      // Update cloth physics with Verlet integration and constraint satisfaction.
       function updateCloth() {
-        // Verlet integration.
+        // Verlet integration step.
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * friction;
             let vy = (p.y - p.oldy) * friction;
             p.oldx = p.x;
             p.oldy = p.y;
-            p.x += vx + gravityX;
-            p.y += vy + gravityY;
+            p.x += vx;
+            p.y += vy + gravity;
           }
         }
-        
-        // Relax constraints multiple times per frame.
+        // Relax constraints several times per frame.
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
             let p2 = clothPoints[c.p2];
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
-            let dist = sqrt(dx * dx + dy * dy);
-            let diff = (dist - c.length) / dist;
+            let distVal = sqrt(dx * dx + dy * dy);
+            let diff = (distVal - c.length) / distVal;
             let offsetX = dx * 0.5 * diff;
             let offsetY = dy * 0.5 * diff;
             if (!p1.pinned) {
@@ -182,17 +217,8 @@
           }
         }
       }
-      
-      // p5 event: update gravity based on device tilt.
-      function deviceMoved() {
-        if (accelerationX !== undefined && accelerationY !== undefined) {
-          // Map the device's acceleration to a smaller gravity vector.
-          gravityX = map(accelerationY, -90, 90, -0.5, 0.5);
-          gravityY = map(accelerationX, -90, 90, 0.5, -0.5);
-        }
-      }
-      
-      // On touch, "poke" the cloth points near the touch location.
+
+      // Allow user interaction: touch or drag to "poke" nearby points.
       function touchMoved() {
         for (let t of touches) {
           let tx = t.x;
@@ -208,35 +234,15 @@
             }
           }
         }
-        // Prevent scrolling on touch devices.
         return false;
       }
-      
-      // Reinitialize the cloth.
+
+      // Reset the simulation.
       function resetCloth() {
         setupCloth();
       }
-      
-      // Activate accelerometer by requesting permission.
-      function activateAccelerometer() {
-        if (
-          typeof DeviceMotionEvent !== "undefined" &&
-          typeof DeviceMotionEvent.requestPermission === "function"
-        ) {
-          DeviceMotionEvent.requestPermission()
-            .then((response) => {
-              if (response === "granted") {
-                console.log("Accelerometer activated");
-                accelButton.hide();
-              } else {
-                console.log("Permission not granted for accelerometer.");
-              }
-            })
-            .catch(console.error);
-        }
-      }
-      
-      // When the window is resized, reset the cloth.
+
+      // If the window is resized, reinitialize the cloth.
       function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
         setupCloth();
