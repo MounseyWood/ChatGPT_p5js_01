@@ -2,37 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Interactive Cloth Simulation</title>
+    <title>Interactive Cloth Simulation with Reset</title>
     <!-- Load p5.js from a CDN -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
   <body>
     <script>
-      // Cloth parameters
-      let cols = 20;
-      let rows = 15;
-      let spacing = 15;
+      // Increase fabric size: more columns/rows and larger spacing.
+      let cols = 30;
+      let rows = 20;
+      let spacing = 20;
 
-      // Arrays for points & constraints
+      // Arrays for cloth points & constraints.
       let clothPoints = [];
       let clothConstraints = [];
 
-      // Physics parameters
+      // Physics parameters.
       let friction = 0.98;
       let iterations = 5;
 
-      // Gravity as a 2D vector (updated by device orientation)
+      // Gravity as a 2D vector (will be updated by device orientation).
       let gravityX = 0;
-      let gravityY = 0.4; // a little downward gravity by default
+      let gravityY = 0.4; // a slight default downward gravity
+
+      // Reset button reference.
+      let resetButton;
 
       function setup() {
         createCanvas(windowWidth, windowHeight);
 
-        // Request device orientation (some devices need user gesture to allow)
-        if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
-          // iOS 13+ devices require a permission request
+        // Create a reset button in the top left.
+        resetButton = createButton("Reset Cloth");
+        resetButton.position(20, 20);
+        resetButton.style("font-size", "16px");
+        resetButton.mousePressed(resetCloth);
+
+        // Request device motion permission on iOS (if needed).
+        if (
+          typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function"
+        ) {
           DeviceMotionEvent.requestPermission().catch(() => {
-            // you could show a custom message or button here
             console.log("Device motion permission was not granted.");
           });
         }
@@ -43,10 +53,10 @@
       function draw() {
         background(30);
 
-        // Update cloth physics
+        // Update the cloth physics.
         updateCloth();
 
-        // Draw constraints (lines between points)
+        // Draw the cloth constraints (lines between points).
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -55,87 +65,95 @@
           line(p1.x, p1.y, p2.x, p2.y);
         }
 
-        // Optionally draw the points as small circles
+        // Optionally, draw the points as small circles.
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
 
-        // Instructions
+        // Instructions.
         fill(255);
         noStroke();
         textSize(16);
         textAlign(CENTER, CENTER);
-        text("Tilt your device to change gravity.\nTouch or drag on the cloth to poke it.", width / 2, 30);
+        text(
+          "Tilt your device to change gravity.\nTouch or drag on the cloth to poke it.",
+          width / 2,
+          50
+        );
       }
 
+      // Create the cloth grid and constraints.
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
 
-        // Create a grid of points
+        // Position the swatch centered horizontally and starting a bit lower to allow room for the reset button.
+        let startX = width / 2 - (cols * spacing) / 2;
+        let startY = 100;
+
+        // Create a grid of points.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
-            let px = x * spacing + (width / 2 - (cols * spacing) / 2);
-            let py = y * spacing + 50; // start 50px from top
-            let pinned = (y === 0);    // pin the entire top row
+            let px = x * spacing + startX;
+            let py = y * spacing + startY;
+            let pinned = (y === 0); // Pin the entire top row.
 
             clothPoints.push({
               x: px,
               y: py,
               oldx: px,
               oldy: py,
-              pinned: pinned
+              pinned: pinned,
             });
           }
         }
 
-        // Create horizontal & vertical constraints
+        // Create horizontal & vertical constraints.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = x + y * cols;
 
-            // Horizontal constraint
+            // Horizontal constraint.
             if (x < cols - 1) {
               clothConstraints.push({
                 p1: idx,
                 p2: idx + 1,
-                length: spacing
+                length: spacing,
               });
             }
 
-            // Vertical constraint
+            // Vertical constraint.
             if (y < rows - 1) {
               clothConstraints.push({
                 p1: idx,
                 p2: idx + cols,
-                length: spacing
+                length: spacing,
               });
             }
           }
         }
       }
 
-      // Verlet integration & constraint satisfaction
+      // Update cloth physics using Verlet integration & constraint relaxation.
       function updateCloth() {
-        // 1. Integrate
+        // Verlet integration.
         for (let p of clothPoints) {
           if (!p.pinned) {
-            // velocity
             let vx = (p.x - p.oldx) * friction;
             let vy = (p.y - p.oldy) * friction;
 
             p.oldx = p.x;
             p.oldy = p.y;
 
-            // apply “gravity” from device orientation
+            // Apply device-tilt gravity.
             p.x += vx + gravityX;
             p.y += vy + gravityY;
           }
         }
 
-        // 2. Constraint relaxation
+        // Constraint relaxation (multiple iterations for a stiffer cloth).
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
@@ -161,29 +179,24 @@
         }
       }
 
-      // p5 function that fires when device orientation changes
-      // (Note: not all browsers fully support these, and iOS might need permission)
+      // Update gravity based on device tilt.
       function deviceMoved() {
-        // map accelerationX/accelerationY from device tilt to a smaller range
-        // e.g., -90 to 90 degrees => -0.5 to +0.5
         if (accelerationX !== undefined && accelerationY !== undefined) {
-          gravityX = map(accelerationY, -90, 90, -0.5, 0.5); // tilt forward/back changes x
-          gravityY = map(accelerationX, -90, 90, 0.5, -0.5); // tilt left/right changes y
+          // Map device acceleration to a small gravity vector.
+          gravityX = map(accelerationY, -90, 90, -0.5, 0.5);
+          gravityY = map(accelerationX, -90, 90, 0.5, -0.5);
         }
       }
 
-      // On touch, “poke” the cloth by pushing points near the touch location
+      // On touch, "poke" the cloth by pushing nearby points.
       function touchMoved() {
-        // For each active touch
         for (let t of touches) {
           let tx = t.x;
           let ty = t.y;
-          // For each point, if close enough, apply a small force
           for (let p of clothPoints) {
             let d = dist(tx, ty, p.x, p.y);
-            let radius = 50; // how large an area around the finger is affected
+            let radius = 50;
             if (d < radius) {
-              // The closer the point, the stronger the push
               let strength = (radius - d) * 0.2;
               let angle = atan2(p.y - ty, p.x - tx);
               p.x += cos(angle) * strength;
@@ -191,11 +204,16 @@
             }
           }
         }
-        // Return false to prevent scrolling on mobile
+        // Prevent default scrolling.
         return false;
       }
 
-      // Re-setup cloth on window resize
+      // Reset the cloth simulation.
+      function resetCloth() {
+        setupCloth();
+      }
+
+      // Handle window resizing.
       function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
         setupCloth();
