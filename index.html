@@ -2,13 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Cloth Simulation with Sliding Controls</title>
+    <title>Cloth Simulation with Weight Slider</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
   <body>
     <script>
-      // Grid parameters: number of grid corners (rows x cols) and spacing.
+      // Grid parameters.
       let cols = 30;
       let rows = 20;
       let spacing = 20;
@@ -28,9 +28,10 @@
       let friction = 0.98;
       let iterations = 5;
       let gravity = 0.4;
+      let weight = 1.0; // weight multiplier
       
       // Slider variables.
-      let frictionSlider, iterationsSlider, gravitySlider;
+      let frictionSlider, iterationsSlider, gravitySlider, weightSlider;
       
       // UI element: reset button.
       let resetButton;
@@ -38,7 +39,7 @@
       function setup() {
         createCanvas(windowWidth, windowHeight);
         
-        // Create a reset button.
+        // Reset button.
         resetButton = createButton("Reset Cloth");
         resetButton.position(20, 20);
         resetButton.style("font-size", "16px");
@@ -57,13 +58,14 @@
         gravitySlider.position(20, 140);
         gravitySlider.style("width", "200px");
         
+        weightSlider = createSlider(0.5, 2.0, 1.0, 0.1);
+        weightSlider.position(20, 180);
+        weightSlider.style("width", "200px");
+        
         setupCloth();
       }
       
-      // Sets up the cloth simulation:
-      // 1. Creates grid corner points.
-      // 2. Computes horizontal midpoints, vertical midpoints, and cell centers.
-      // 3. Adds constraints to subdivide each cell into 8 triangles.
+      // Sets up the cloth simulation with 8-triangle cells.
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -72,9 +74,9 @@
         vertical = [];
         centers = [];
         
-        // Position the cloth centered horizontally and leave room for sliders.
+        // Position cloth centered horizontally and below the UI.
         let startX = width / 2 - (cols - 1) * spacing / 2;
-        let startY = 200;
+        let startY = 220;
         
         // 1. Create grid corners.
         for (let y = 0; y < rows; y++) {
@@ -138,7 +140,7 @@
           }
         }
         
-        // (Optional) Add grid constraints between adjacent corner points.
+        // (Optional) Add constraints between adjacent grid corners.
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = grid[y][x];
@@ -152,7 +154,6 @@
         }
         
         // 5. Subdivide each cell into 8 triangles.
-        // For cell at (y,x): corners: A, B, C, D; edge midpoints: E (top), F (bottom), G (left), H (right); center: I.
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let A = grid[y][x];
@@ -204,19 +205,17 @@
         }
       }
       
-      // Helper: add a constraint if it doesn't already exist.
+      // Helper: adds a constraint if not already present.
       function addConstraint(i, j, len) {
         let a = min(i, j);
         let b = max(i, j);
         for (let c of clothConstraints) {
-          if (c.p1 === a && c.p2 === b) {
-            return;
-          }
+          if (c.p1 === a && c.p2 === b) return;
         }
         clothConstraints.push({ p1: a, p2: b, length: len });
       }
       
-      // Helper: compute distance between two points (by indices).
+      // Helper: compute distance between two points given their indices.
       function distBetween(i1, i2) {
         let p1 = clothPoints[i1];
         let p2 = clothPoints[i2];
@@ -226,10 +225,11 @@
       function draw() {
         background(30);
         
-        // Update simulation parameters from sliders.
+        // Update parameters from sliders.
         friction = frictionSlider.value();
         iterations = iterationsSlider.value();
         gravity = gravitySlider.value();
+        weight = weightSlider.value();
         
         updateCloth();
         
@@ -256,13 +256,13 @@
         text("Friction: " + nf(friction, 1, 2), 240, 75);
         text("Iterations: " + iterations, 240, 115);
         text("Gravity: " + nf(gravity, 1, 2), 240, 155);
+        text("Weight: " + nf(weight, 1, 2), 240, 195);
         textAlign(CENTER, CENTER);
         text("Touch/drag to poke the cloth. Press 'Reset Cloth' to restart.", width / 2, 40);
       }
       
       // Verlet integration and constraint relaxation.
       function updateCloth() {
-        // Verlet integration.
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * friction;
@@ -270,10 +270,10 @@
             p.oldx = p.x;
             p.oldy = p.y;
             p.x += vx;
-            p.y += vy + gravity;
+            // Apply gravity multiplied by weight.
+            p.y += vy + gravity * weight;
           }
         }
-        // Relax constraints.
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
@@ -296,12 +296,9 @@
         }
       }
       
-      // Touch handler: poke nearby cloth points unless the touch is in the slider area.
+      // Touch interaction: poke nearby points if not in UI area.
       function touchMoved() {
-        // If the first touch is in the UI area (top 180 pixels), skip cloth interaction.
-        if (touches.length > 0 && touches[0].y < 180) {
-          return;
-        }
+        if (touches.length > 0 && touches[0].y < 220) return;
         for (let t of touches) {
           let tx = t.x;
           let ty = t.y;
@@ -319,7 +316,6 @@
         return false;
       }
       
-      // Reset the simulation.
       function resetCloth() {
         setupCloth();
       }
