@@ -2,104 +2,247 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Enhanced Cloth Simulation – Physical Attributes</title>
+    <title>Cloth Simulation – Improved Layout</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
-      body { margin: 0; overflow: hidden; }
-      canvas { display: block; }
+      /* Reset default body margins */
+      body, html {
+        margin: 0;
+        padding: 0;
+        background: #111; /* Dark background for the entire page */
+        color: #fff;      /* White text */
+        font-family: sans-serif;
+        height: 100%;
+      }
+
+      /* Side panel for UI */
+      #uiPanel {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 280px;
+        height: 100%;
+        background: #222;
+        box-shadow: 2px 0 8px rgba(0,0,0,0.5);
+        padding: 20px;
+        box-sizing: border-box;
+        overflow-y: auto; /* Scroll if content is tall */
+      }
+
+      /* A container for the canvas to sit next to the UI panel */
+      #canvasContainer {
+        position: absolute;
+        top: 0;
+        left: 280px;  /* Canvas starts to the right of the panel */
+        width: calc(100% - 280px);
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* Simple styling for headings, paragraphs, etc. */
+      h1, h2, h3 {
+        margin: 0 0 10px;
+        padding: 0;
+      }
+      p, label {
+        font-size: 14px;
+        line-height: 1.4em;
+        margin-bottom: 8px;
+      }
+      button {
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        background: #555;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #666;
+      }
+      .sliderLabel {
+        display: block;
+        margin-top: 12px;
+      }
     </style>
   </head>
   <body>
+    <!-- Side Panel for UI -->
+    <div id="uiPanel">
+      <h2>Cloth Simulation</h2>
+      <button id="resetBtn">Reset Cloth</button>
+
+      <label class="sliderLabel">Damping (Friction): <span id="dampingVal"></span></label>
+      <div id="dampingSlider"></div>
+
+      <label class="sliderLabel">Iterations: <span id="iterationsVal"></span></label>
+      <div id="iterationsSlider"></div>
+
+      <label class="sliderLabel">Gravity: <span id="gravityVal"></span></label>
+      <div id="gravitySlider"></div>
+
+      <label class="sliderLabel">Weight: <span id="weightVal"></span></label>
+      <div id="weightSlider"></div>
+
+      <label class="sliderLabel">Wind: <span id="windVal"></span></label>
+      <div id="windSlider"></div>
+
+      <label class="sliderLabel">Stretch: <span id="stretchVal"></span></label>
+      <div id="stretchSlider"></div>
+
+      <label class="sliderLabel">Shear: <span id="shearVal"></span></label>
+      <div id="shearSlider"></div>
+
+      <label class="sliderLabel">Bending: <span id="bendingVal"></span></label>
+      <div id="bendingSlider"></div>
+
+      <p style="margin-top: 20px;">
+        This panel controls the cloth simulation.  
+        <br><br>
+        • <strong>Damping</strong> reduces velocity each frame (like friction).  
+        <br>
+        • <strong>Iterations</strong> is how many times we relax constraints per frame.  
+        <br>
+        • <strong>Gravity & Weight</strong> pull the cloth downward.  
+        <br>
+        • <strong>Wind</strong> gently pushes the cloth horizontally.  
+        <br>
+        • <strong>Stretch, Shear, Bending</strong> control how the cloth resists different kinds of deformation.  
+        <br><br>
+        Click or tap on the cloth (to the right) to drag points around!
+      </p>
+    </div>
+
+    <!-- Canvas Container -->
+    <div id="canvasContainer"></div>
+
     <script>
-      // --- Global Variables & Arrays ---
+      // Same cloth simulation variables and arrays as before
       let cols = 30;
       let rows = 20;
       let spacing = 20;
       let clothPoints = [];
       let clothConstraints = [];
-      // 2D arrays for different point groups.
-      let grid = [];       // grid corner points
-      let horizontal = []; // midpoints on horizontal edges
-      let vertical = [];   // midpoints on vertical edges
-      let centers = [];    // center of each cell
 
-      // Simulation parameters (controlled by sliders).
-      let damping = 0.98;       // replaces friction (velocity damping)
+      let grid = [];
+      let horizontal = [];
+      let vertical = [];
+      let centers = [];
+
+      // Default simulation parameters
+      let damping = 0.98;
       let iterations = 5;
       let gravity = 0.4;
       let weight = 1.0;
       let windAmplitude = 0.2;
 
-      // New attributes:
-      let stretchFactor = 1.0;  // modulates rest length for structural constraints
-      let shearFactor = 1.0;    // scales desired length for diagonal (shear) constraints
-      let bendingFactor = 1.0;  // scales rest length for bending constraints
+      let stretchFactor = 1.0;
+      let shearFactor = 1.0;
+      let bendingFactor = 1.0;
 
-      // Additional parameter for self‑collision.
+      // Self-collision parameters
       let collisionThreshold = spacing * 0.5;
       let repulsionFactor = 0.5;
 
-      // UI elements.
-      let dampingSlider, iterationsSlider, gravitySlider, weightSlider, windSlider;
-      let stretchSlider, shearSlider, bendingSlider;
-      let resetButton;
-
-      // For point dragging.
+      // For dragging
       let dragPointIndex = null;
 
+      // p5 Setup
       function setup() {
-        createCanvas(windowWidth, windowHeight);
+        // Create canvas inside the #canvasContainer
+        let cnv = createCanvas(windowWidth - 280, windowHeight);
+        cnv.parent("canvasContainer");
+        cnv.style("display", "block");
 
-        // --- Create UI Controls ---
-        resetButton = createButton("Reset Cloth");
-        resetButton.position(20, 20);
-        resetButton.style("font-size", "16px");
-        resetButton.mousePressed(resetCloth);
-
-        dampingSlider = createSlider(0.90, 1.0, 0.98, 0.01);
-        dampingSlider.position(20, 60);
-        dampingSlider.style("width", "200px");
-
-        iterationsSlider = createSlider(1, 10, 5, 1);
-        iterationsSlider.position(20, 100);
-        iterationsSlider.style("width", "200px");
-
-        gravitySlider = createSlider(0, 1, 0.4, 0.01);
-        gravitySlider.position(20, 140);
-        gravitySlider.style("width", "200px");
-
-        weightSlider = createSlider(0.5, 2.0, 1.0, 0.1);
-        weightSlider.position(20, 180);
-        weightSlider.style("width", "200px");
-
-        windSlider = createSlider(0, 1, 0.2, 0.01);
-        windSlider.position(20, 220);
-        windSlider.style("width", "200px");
-
-        stretchSlider = createSlider(0.8, 1.2, 1.0, 0.01);
-        stretchSlider.position(20, 260);
-        stretchSlider.style("width", "200px");
-
-        shearSlider = createSlider(0.8, 1.2, 1.0, 0.01);
-        shearSlider.position(20, 300);
-        shearSlider.style("width", "200px");
-
-        bendingSlider = createSlider(0.8, 1.2, 1.0, 0.01);
-        bendingSlider.position(20, 340);
-        bendingSlider.style("width", "200px");
-
+        // Hook up sliders & button to DOM elements
+        createUI();
         setupCloth();
       }
 
-      // --- Setup Cloth Simulation ---
-      // This function creates:
-      // 1. A grid of corner points (with the top row pinned).
-      // 2. Horizontal and vertical midpoints plus cell centers.
-      // 3. Basic structural constraints (between adjacent corners),
-      //    bending constraints (between points two apart),
-      //    and extra shear constraints (diagonals across cells).
-      // 4. Subdivides each cell into 8 triangles (for additional detail).
+      // Creates the sliders and button, attaches event listeners
+      function createUI() {
+        // Reset button
+        const resetBtn = select("#resetBtn");
+        resetBtn.mousePressed(resetCloth);
+
+        // We'll create p5 sliders using createSlider, then place them inside the #uiPanel
+        // But for better styling, we can just store them in variables and manually update labels.
+
+        // Damping slider
+        const dampingSlider = createSlider(0.90, 1.0, 0.98, 0.01)
+          .parent("dampingSlider")
+          .input(() => {
+            damping = dampingSlider.value();
+            select("#dampingVal").html(nf(damping, 1, 2));
+          });
+        select("#dampingVal").html(nf(damping, 1, 2));
+
+        // Iterations slider
+        const iterationsSlider = createSlider(1, 10, 5, 1)
+          .parent("iterationsSlider")
+          .input(() => {
+            iterations = iterationsSlider.value();
+            select("#iterationsVal").html(iterations);
+          });
+        select("#iterationsVal").html(iterations);
+
+        // Gravity slider
+        const gravitySlider = createSlider(0, 1, 0.4, 0.01)
+          .parent("gravitySlider")
+          .input(() => {
+            gravity = gravitySlider.value();
+            select("#gravityVal").html(nf(gravity, 1, 2));
+          });
+        select("#gravityVal").html(nf(gravity, 1, 2));
+
+        // Weight slider
+        const weightSlider = createSlider(0.5, 2.0, 1.0, 0.1)
+          .parent("weightSlider")
+          .input(() => {
+            weight = weightSlider.value();
+            select("#weightVal").html(nf(weight, 1, 2));
+          });
+        select("#weightVal").html(nf(weight, 1, 2));
+
+        // Wind slider
+        const windSlider = createSlider(0, 1, 0.2, 0.01)
+          .parent("windSlider")
+          .input(() => {
+            windAmplitude = windSlider.value();
+            select("#windVal").html(nf(windAmplitude, 1, 2));
+          });
+        select("#windVal").html(nf(windAmplitude, 1, 2));
+
+        // Stretch slider
+        const stretchSl = createSlider(0.8, 1.2, 1.0, 0.01)
+          .parent("stretchSlider")
+          .input(() => {
+            stretchFactor = stretchSl.value();
+            select("#stretchVal").html(nf(stretchFactor, 1, 2));
+          });
+        select("#stretchVal").html(nf(stretchFactor, 1, 2));
+
+        // Shear slider
+        const shearSl = createSlider(0.8, 1.2, 1.0, 0.01)
+          .parent("shearSlider")
+          .input(() => {
+            shearFactor = shearSl.value();
+            select("#shearVal").html(nf(shearFactor, 1, 2));
+          });
+        select("#shearVal").html(nf(shearFactor, 1, 2));
+
+        // Bending slider
+        const bendingSl = createSlider(0.8, 1.2, 1.0, 0.01)
+          .parent("bendingSlider")
+          .input(() => {
+            bendingFactor = bendingSl.value();
+            select("#bendingVal").html(nf(bendingFactor, 1, 2));
+          });
+        select("#bendingVal").html(nf(bendingFactor, 1, 2));
+      }
+
+      // Set up the cloth points and constraints
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -108,11 +251,11 @@
         vertical = [];
         centers = [];
 
-        // Position the cloth so the UI remains above it.
-        let startX = width / 2 - (cols - 1) * spacing / 2;
-        let startY = 300;  // cloth starts lower
+        // Re-center the cloth to the middle-right area
+        let startX = (windowWidth - 280) / 2 - (cols - 1) * spacing / 2 + 280;
+        let startY = 100;
 
-        // 1. Create grid corner points.
+        // 1. Create grid corner points
         for (let y = 0; y < rows; y++) {
           grid[y] = [];
           for (let x = 0; x < cols; x++) {
@@ -124,7 +267,7 @@
           }
         }
 
-        // 2. Compute horizontal midpoints.
+        // 2. Horizontal midpoints
         for (let y = 0; y < rows; y++) {
           horizontal[y] = [];
           for (let x = 0; x < cols - 1; x++) {
@@ -139,7 +282,7 @@
           }
         }
 
-        // 3. Compute vertical midpoints.
+        // 3. Vertical midpoints
         for (let y = 0; y < rows - 1; y++) {
           vertical[y] = [];
           for (let x = 0; x < cols; x++) {
@@ -154,7 +297,7 @@
           }
         }
 
-        // 4. Compute cell centers.
+        // 4. Cell centers
         for (let y = 0; y < rows - 1; y++) {
           centers[y] = [];
           for (let x = 0; x < cols - 1; x++) {
@@ -173,7 +316,7 @@
           }
         }
 
-        // 5. Add basic structural constraints between adjacent grid corners.
+        // 5. Structural constraints (Stretch)
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let idx = grid[y][x];
@@ -186,7 +329,7 @@
           }
         }
 
-        // 6. Add bending constraints between grid corners two apart.
+        // 6. Bending constraints (2 apart)
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols - 2; x++) {
             let idx1 = grid[y][x];
@@ -202,39 +345,31 @@
           }
         }
 
-        // 7. Add shear constraints for each cell (diagonals between grid corners).
+        // 7. Shear constraints (diagonals in each cell)
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
-            let idxA = grid[y][x];       // top-left
-            let idxB = grid[y][x+1];       // top-right
-            let idxC = grid[y+1][x];       // bottom-left
-            let idxD = grid[y+1][x+1];     // bottom-right
+            let idxA = grid[y][x];
+            let idxB = grid[y][x + 1];
+            let idxC = grid[y + 1][x];
+            let idxD = grid[y + 1][x + 1];
             addConstraint(idxA, idxD, sqrt(2) * spacing * shearFactor);
             addConstraint(idxB, idxC, sqrt(2) * spacing * shearFactor);
           }
         }
 
-        // 8. Subdivide each cell into 8 triangles.
-        // For cell at (y,x): let
-        //   A = grid[y][x], B = grid[y][x+1], C = grid[y+1][x], D = grid[y+1][x+1],
-        //   E = horizontal[y][x] (top midpoint),
-        //   F = horizontal[y+1][x] (bottom midpoint),
-        //   G = vertical[y][x] (left midpoint),
-        //   H = vertical[y][x+1] (right midpoint),
-        //   I = centers[y][x] (cell center).
+        // 8. Subdivide cells into triangles
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let A = grid[y][x];
-            let B = grid[y][x+1];
-            let C = grid[y+1][x];
-            let D = grid[y+1][x+1];
+            let B = grid[y][x + 1];
+            let C = grid[y + 1][x];
+            let D = grid[y + 1][x + 1];
             let E = horizontal[y][x];
-            let F = horizontal[y+1][x];
+            let F = horizontal[y + 1][x];
             let G = vertical[y][x];
-            let H = vertical[y][x+1];
+            let H = vertical[y][x + 1];
             let I = centers[y][x];
 
-            // Top-left corner triangles.
             addConstraint(A, E, distBetween(A, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, A, distBetween(I, A));
@@ -243,7 +378,6 @@
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, A, distBetween(I, A));
 
-            // Top-right corner triangles.
             addConstraint(B, E, distBetween(B, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, B, distBetween(I, B));
@@ -252,7 +386,6 @@
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, B, distBetween(I, B));
 
-            // Bottom-left corner triangles.
             addConstraint(C, G, distBetween(C, G));
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, C, distBetween(I, C));
@@ -261,7 +394,6 @@
             addConstraint(F, I, distBetween(F, I));
             addConstraint(I, C, distBetween(I, C));
 
-            // Bottom-right corner triangles.
             addConstraint(D, H, distBetween(D, H));
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, D, distBetween(I, D));
@@ -273,11 +405,9 @@
         }
       }
 
-      // --- Helper Functions ---
       function addConstraint(i, j, len) {
         let a = min(i, j);
         let b = max(i, j);
-        // Avoid duplicate constraints.
         for (let c of clothConstraints) {
           if (c.p1 === a && c.p2 === b) return;
         }
@@ -290,23 +420,11 @@
         return sqrt(sq(p2.x - p1.x) + sq(p2.y - p1.y));
       }
 
-      // --- Main Draw Loop ---
       function draw() {
         background(30);
-
-        // Update simulation parameters from sliders.
-        damping = dampingSlider.value();
-        iterations = iterationsSlider.value();
-        gravity = gravitySlider.value();
-        weight = weightSlider.value();
-        windAmplitude = windSlider.value();
-        stretchFactor = stretchSlider.value();
-        shearFactor = shearSlider.value();
-        bendingFactor = bendingSlider.value();
-
         updateCloth();
 
-        // Draw all constraints.
+        // Draw constraints
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -315,58 +433,31 @@
           line(p1.x, p1.y, p2.x, p2.y);
         }
 
-        // Draw all points.
+        // Draw points
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
-
-        // --- Educational Overlay ---
-        fill(255);
-        noStroke();
-        textSize(16);
-        textAlign(LEFT, TOP);
-        let info =
-          "Damping: " + nf(damping, 1, 2) + "\n" +
-          "Iterations: " + iterations + "\n" +
-          "Gravity: " + nf(gravity, 1, 2) + "\n" +
-          "Weight: " + nf(weight, 1, 2) + "\n" +
-          "Wind: " + nf(windAmplitude, 1, 2) + "\n" +
-          "Stretch: " + nf(stretchFactor, 1, 2) + "\n" +
-          "Shear: " + nf(shearFactor, 1, 2) + "\n" +
-          "Bending: " + nf(bendingFactor, 1, 2) + "\n\n" +
-          "Attributes:\n" +
-          "- Structural (Stretch): Maintains grid spacing (adjusted by Stretch).\n" +
-          "- Shear Constraints: Resist diagonal distortion (adjusted by Shear).\n" +
-          "- Bending Constraints: Resist sharp folds (adjusted by Bending).\n" +
-          "- Damping: Controls energy loss (smooths motion).\n" +
-          "- Wind: Applies a dynamic horizontal nudge.\n" +
-          "- Point Dragging: Click/tap (below UI) to move a point.";
-        text(info, 240, 60);
-
-        // Title.
-        textAlign(CENTER, TOP);
-        textSize(20);
-        text("Enhanced Cloth Simulation – Educational Mode", width / 2, 20);
       }
 
-      // --- Simulation Update ---
       function updateCloth() {
-        // Verlet integration with wind.
+        // Verlet integration with wind
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * damping;
             let vy = (p.y - p.oldy) * damping;
             p.oldx = p.x;
             p.oldy = p.y;
-            // Wind force oscillates over time.
+
+            // Wind force
             let windForce = sin(frameCount * 0.01) * windAmplitude;
             p.x += vx + windForce;
             p.y += vy + gravity * weight;
           }
         }
-        // Constraint relaxation.
+
+        // Constraint relaxation
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
@@ -387,7 +478,8 @@
             }
           }
         }
-        // Self-collision: gently repel points that are too close.
+
+        // Self-collision
         doSelfCollision();
       }
 
@@ -419,10 +511,10 @@
         }
       }
 
-      // --- Point Dragging ---
+      // Point dragging
       function mousePressed() {
-        // Only allow dragging if click/touch is below the UI area.
-        if (mouseY > 360) {
+        // Only allow dragging if click is below the UI area
+        if (mouseX > 280 && mouseY > 360) {
           let nearestIndex = -1;
           let nearestDist = Infinity;
           for (let i = 0; i < clothPoints.length; i++) {
@@ -451,13 +543,13 @@
         dragPointIndex = null;
       }
 
-      // --- Reset & Resize ---
+      // Reset & Resize
       function resetCloth() {
         setupCloth();
       }
 
       function windowResized() {
-        resizeCanvas(windowWidth, windowHeight);
+        resizeCanvas(windowWidth - 280, windowHeight);
         setupCloth();
       }
     </script>
