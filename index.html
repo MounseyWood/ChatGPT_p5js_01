@@ -2,42 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>p5.js Cloth Simulation</title>
-    <!-- p5.js from the official CDN -->
+    <title>Interactive Cloth Simulation</title>
+    <!-- Load p5.js from a CDN -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
   </head>
   <body>
     <script>
-      // Number of points in the horizontal (cols) and vertical (rows) directions
+      // Cloth parameters
       let cols = 20;
       let rows = 15;
-
-      // Distance between points
       let spacing = 15;
 
-      // Arrays to hold cloth points and the constraints between them
+      // Arrays for points & constraints
       let clothPoints = [];
       let clothConstraints = [];
 
-      // Simulation parameters
-      let gravity = 0.5;
-      let friction = 0.99;
-      // Number of constraint relaxations per frame (higher = stiffer cloth)
+      // Physics parameters
+      let friction = 0.98;
       let iterations = 5;
+
+      // Gravity as a 2D vector (updated by device orientation)
+      let gravityX = 0;
+      let gravityY = 0.4; // a little downward gravity by default
 
       function setup() {
         createCanvas(windowWidth, windowHeight);
-        // Initialize the cloth (points + constraints)
+
+        // Request device orientation (some devices need user gesture to allow)
+        if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+          // iOS 13+ devices require a permission request
+          DeviceMotionEvent.requestPermission().catch(() => {
+            // you could show a custom message or button here
+            console.log("Device motion permission was not granted.");
+          });
+        }
+
         setupCloth();
       }
 
       function draw() {
         background(30);
 
-        // 1. Update the cloth’s physics
+        // Update cloth physics
         updateCloth();
 
-        // 2. Draw the cloth
+        // Draw constraints (lines between points)
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -52,15 +61,20 @@
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
+
+        // Instructions
+        fill(255);
+        noStroke();
+        textSize(16);
+        textAlign(CENTER, CENTER);
+        text("Tilt your device to change gravity.\nTouch or drag on the cloth to poke it.", width / 2, 30);
       }
 
-      // Create the grid of points and the constraints between them
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
 
         // Create a grid of points
-        // Pin the entire top row, or just corners if you prefer
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
             let px = x * spacing + (width / 2 - (cols * spacing) / 2);
@@ -82,7 +96,7 @@
           for (let x = 0; x < cols; x++) {
             let idx = x + y * cols;
 
-            // Horizontal constraint: connect point to the one on its right
+            // Horizontal constraint
             if (x < cols - 1) {
               clothConstraints.push({
                 p1: idx,
@@ -91,7 +105,7 @@
               });
             }
 
-            // Vertical constraint: connect point to the one below
+            // Vertical constraint
             if (y < rows - 1) {
               clothConstraints.push({
                 p1: idx,
@@ -103,33 +117,35 @@
         }
       }
 
-      // Update positions with Verlet integration & satisfy constraints
+      // Verlet integration & constraint satisfaction
       function updateCloth() {
-        // 1. Verlet integration
+        // 1. Integrate
         for (let p of clothPoints) {
           if (!p.pinned) {
+            // velocity
             let vx = (p.x - p.oldx) * friction;
             let vy = (p.y - p.oldy) * friction;
 
             p.oldx = p.x;
             p.oldy = p.y;
 
-            p.x += vx;
-            p.y += vy + gravity;
+            // apply “gravity” from device orientation
+            p.x += vx + gravityX;
+            p.y += vy + gravityY;
           }
         }
 
-        // 2. Satisfy constraints (multiple iterations for stiffness)
+        // 2. Constraint relaxation
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
             let p1 = clothPoints[c.p1];
             let p2 = clothPoints[c.p2];
+
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
             let dist = sqrt(dx * dx + dy * dy);
             let diff = (dist - c.length) / dist;
 
-            // Half of the offset goes to each point
             let offsetX = dx * 0.5 * diff;
             let offsetY = dy * 0.5 * diff;
 
@@ -145,7 +161,41 @@
         }
       }
 
-      // Handle browser resizing
+      // p5 function that fires when device orientation changes
+      // (Note: not all browsers fully support these, and iOS might need permission)
+      function deviceMoved() {
+        // map accelerationX/accelerationY from device tilt to a smaller range
+        // e.g., -90 to 90 degrees => -0.5 to +0.5
+        if (accelerationX !== undefined && accelerationY !== undefined) {
+          gravityX = map(accelerationY, -90, 90, -0.5, 0.5); // tilt forward/back changes x
+          gravityY = map(accelerationX, -90, 90, 0.5, -0.5); // tilt left/right changes y
+        }
+      }
+
+      // On touch, “poke” the cloth by pushing points near the touch location
+      function touchMoved() {
+        // For each active touch
+        for (let t of touches) {
+          let tx = t.x;
+          let ty = t.y;
+          // For each point, if close enough, apply a small force
+          for (let p of clothPoints) {
+            let d = dist(tx, ty, p.x, p.y);
+            let radius = 50; // how large an area around the finger is affected
+            if (d < radius) {
+              // The closer the point, the stronger the push
+              let strength = (radius - d) * 0.2;
+              let angle = atan2(p.y - ty, p.x - tx);
+              p.x += cos(angle) * strength;
+              p.y += sin(angle) * strength;
+            }
+          }
+        }
+        // Return false to prevent scrolling on mobile
+        return false;
+      }
+
+      // Re-setup cloth on window resize
       function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
         setupCloth();
