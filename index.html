@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Square Cloth Simulation – Masked Weave Pattern</title>
+    <title>Square Cloth Simulation – Simple Gray-Scale Shading</title>
+    <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
       body, html {
@@ -13,6 +14,7 @@
         font-family: sans-serif;
         height: 100%;
       }
+      /* Side panel */
       #uiPanel {
         position: absolute;
         top: 0; left: 0;
@@ -23,6 +25,7 @@
         box-sizing: border-box;
         overflow-y: auto;
       }
+      /* Canvas container */
       #canvasContainer {
         position: absolute;
         top: 0; left: 280px;
@@ -30,9 +33,12 @@
         height: 100%;
         overflow: hidden;
       }
-      h2 { margin-top: 0; }
+      h2 {
+        margin-top: 0;
+      }
       p, label {
-        font-size: 14px; line-height: 1.4em;
+        font-size: 14px;
+        line-height: 1.4em;
         margin-bottom: 8px;
       }
       .sliderLabel {
@@ -63,7 +69,7 @@
       <h2>Cloth Simulation</h2>
       <p>
         Touch/click on the cloth (in the canvas) to drag points.  
-        Adjust the sliders to see how each parameter affects the simulation.  
+        Adjust the sliders to see how each parameter affects the simulation.
       </p>
 
       <label class="sliderLabel">Damping (Friction): <span id="dampingVal"></span></label>
@@ -91,13 +97,13 @@
       <div id="gravitySlider"></div>
 
       <label class="sliderLabel">
-        <input type="checkbox" id="showPattern" />
-        Show Weave Pattern
+        <input type="checkbox" id="showShading" />
+        Show Gray-Scale Shading
       </label>
 
       <p>
-        <strong>Note:</strong> This approach clips the weave pattern to the cloth’s shape (a “stencil”).  
-        It is not true texture mapping, so the pattern does not warp with each triangle.
+        <strong>Note:</strong> This shading is a simple fill based on each cell’s average Y position.  
+        It’s not a true texture or pattern, but it gives a clear sense of the cloth’s shape.
       </p>
 
       <div class="bottomButtons">
@@ -141,13 +147,8 @@
       // A small shift so the cloth is not too far right
       let clothShiftX = -40;
 
-      // Toggling the weave pattern overlay
-      let showWeave = false;
-
-      // Off-screen buffers
-      let weavePattern;    // The repeating tile pattern
-      let patternTiled;    // Tiled across the whole screen
-      let clothMask;       // White area where the cloth is
+      // Toggling the gray-scale shading
+      let showShading = false;
 
       function setup() {
         let cnv = createCanvas(windowWidth - 280, windowHeight);
@@ -155,7 +156,6 @@
         cnv.style("display", "block");
 
         createUI();
-        createWeavePattern(); // Build a tile for the weave pattern
         setupCloth();
       }
 
@@ -235,27 +235,11 @@
           });
         select("#gravityVal").html(nf(gravity, 1, 2));
 
-        // Weave pattern toggle
-        const patternChk = select("#showPattern");
-        patternChk.changed(() => {
-          showWeave = patternChk.elt.checked;
+        // Shading toggle
+        const shadingChk = select("#showShading");
+        shadingChk.changed(() => {
+          showShading = shadingChk.elt.checked;
         });
-      }
-
-      // Create a tile for the weave pattern
-      function createWeavePattern() {
-        weavePattern = createGraphics(50, 50);
-        weavePattern.background(220); // light background
-        weavePattern.stroke(160);
-        weavePattern.strokeWeight(4);
-        // Horizontal line
-        weavePattern.line(0, 25, 50, 25);
-        // Vertical line
-        weavePattern.line(25, 0, 25, 50);
-        // Optional diagonal lines
-        weavePattern.strokeWeight(2);
-        weavePattern.line(0, 0, 50, 50);
-        weavePattern.line(50, 0, 0, 50);
       }
 
       function setupCloth() {
@@ -443,26 +427,9 @@
         background(30);
         updateCloth();
 
-        // 1) If user wants the weave pattern, first create a mask of the cloth shape
-        //    and tile the pattern across the screen. Then apply the mask.
-        if (showWeave) {
-          // A) Create / clear buffers (same size as canvas)
-          patternTiled = createGraphics(width, height);
-          clothMask   = createGraphics(width, height);
-
-          // B) Tile the weave pattern across patternTiled
-          for (let tx = 0; tx < width; tx += weavePattern.width) {
-            for (let ty = 0; ty < height; ty += weavePattern.height) {
-              patternTiled.image(weavePattern, tx, ty);
-            }
-          }
-
-          // C) Draw the cloth shape (triangles) in clothMask as white
-          clothMask.background(0);
-          clothMask.noStroke();
-          clothMask.fill(255);
-
-          // We'll draw each cell as two triangles: (A,B,C) and (A,C,D)
+        // If shading is enabled, draw each cell with a fill color
+        if (showShading) {
+          noStroke();
           for (let y = 0; y < rows - 1; y++) {
             for (let x = 0; x < cols - 1; x++) {
               let A = clothPoints[grid[y][x]];
@@ -470,30 +437,29 @@
               let C = clothPoints[grid[y+1][x+1]];
               let D = clothPoints[grid[y+1][x]];
 
-              // Triangle 1: A,B,C
-              clothMask.beginShape();
-              clothMask.vertex(A.x, A.y);
-              clothMask.vertex(B.x, B.y);
-              clothMask.vertex(C.x, C.y);
-              clothMask.endShape(CLOSE);
+              // Average y of the 4 corners
+              let avgY = (A.y + B.y + C.y + D.y) / 4;
+              // Map that to a brightness
+              let bright = map(avgY, 0, height, 80, 220);
+              fill(bright);
 
-              // Triangle 2: A,C,D
-              clothMask.beginShape();
-              clothMask.vertex(A.x, A.y);
-              clothMask.vertex(C.x, C.y);
-              clothMask.vertex(D.x, D.y);
-              clothMask.endShape(CLOSE);
+              // Draw cell as two triangles: (A,B,C) and (A,C,D)
+              beginShape();
+              vertex(A.x, A.y);
+              vertex(B.x, B.y);
+              vertex(C.x, C.y);
+              endShape(CLOSE);
+
+              beginShape();
+              vertex(A.x, A.y);
+              vertex(C.x, C.y);
+              vertex(D.x, D.y);
+              endShape(CLOSE);
             }
           }
-
-          // D) Apply the mask to patternTiled
-          patternTiled.mask(clothMask);
-
-          // E) Draw the masked pattern
-          image(patternTiled, 0, 0);
         }
 
-        // 2) Draw cloth constraints (wireframe) on top
+        // Draw wireframe constraints on top
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -502,7 +468,7 @@
           line(p1.x, p1.y, p2.x, p2.y);
         }
 
-        // 3) Draw cloth points
+        // Draw cloth points
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
@@ -578,7 +544,7 @@
         }
       }
 
-      // Mouse / touch dragging
+      // Dragging
       function mousePressed() {
         if (mouseX > 280) {
           let nearestIndex = -1;
