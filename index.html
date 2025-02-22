@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Creative p5.js Code</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- p5.js library from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+    <script>
+      // Global variables for cloth simulation
+      let cloth = [];
+      let clothConstraints = [];
+      let cols = 20;
+      let rows = 15;
+      let spacing = 15;
+      let clothG;
+
+      function setup() {
+        // Create a WEBGL canvas
+        createCanvas(windowWidth, windowHeight, WEBGL);
+        // Create a 2D graphics buffer for the cloth simulation overlay
+        clothG = createGraphics(windowWidth, windowHeight);
+        setupCloth();
+      }
+
+      function draw() {
+        background(0);
+
+        // 1. Draw parallax background layers (using multiple planes at different depths)
+        drawParallax();
+
+        // 2. Draw a rotating 3D cube (demonstrating a 3D modeling element)
+        push();
+          rotateY(frameCount * 0.01);
+          rotateX(frameCount * 0.01);
+          fill(200, 50, 50);
+          noStroke();
+          box(100);
+        pop();
+
+        // 3. Update and draw the cloth simulation onto the off-screen graphics buffer
+        clothG.clear();
+        clothG.stroke(255);
+        clothG.strokeWeight(2);
+        updateCloth();
+        // Draw all constraints as lines
+        for (let c of clothConstraints) {
+          let p1 = cloth[c.p1];
+          let p2 = cloth[c.p2];
+          clothG.line(p1.x, p1.y, p2.x, p2.y);
+        }
+        // Optionally, draw the points (as small ellipses)
+        for (let p of cloth) {
+          clothG.fill(255, 0, 0);
+          clothG.noStroke();
+          clothG.ellipse(p.x, p.y, 4);
+        }
+        // Overlay the cloth simulation onto the main canvas.
+        // In WEBGL mode, the (0,0) of the canvas is at the center,
+        // so we translate by -width/2 and -height/2.
+        push();
+          translate(-width / 2, -height / 2);
+          image(clothG, 0, 0, width, height);
+        pop();
+
+        // 4. Draw kinetic text that oscillates over time
+        drawKineticText();
+
+        // 5. Apply a posterize filter to evoke an 8‑bit/dithered look
+        filter(POSTERIZE, 4);
+      }
+
+      // Parallax background: three layers that offset based on mouse movement.
+      function drawParallax() {
+        let numLayers = 3;
+        for (let i = 0; i < numLayers; i++) {
+          push();
+            // Set each layer at a different z-depth
+            let z = -500 + i * 200;
+            translate(0, 0, z);
+            // Calculate an offset from mouse position (the deeper the layer, the more it moves)
+            let factor = (i + 1) / numLayers;
+            let offsetX = map(mouseX, 0, width, -20, 20) * factor;
+            let offsetY = map(mouseY, 0, height, -20, 20) * factor;
+            translate(offsetX, offsetY, 0);
+            // Fill with a color that changes with each layer
+            fill(50 + i * 40, 100, 150);
+            noStroke();
+            plane(width, height);
+          pop();
+        }
+      }
+
+      // Kinetic text that moves with sine and cosine functions.
+      function drawKineticText() {
+        push();
+          // Reset matrix so we can use 2D coordinates
+          resetMatrix();
+          textAlign(CENTER, CENTER);
+          textSize(48);
+          fill(255);
+          let tX = windowWidth / 2 + sin(frameCount * 0.05) * 100;
+          let tY = windowHeight / 2 + cos(frameCount * 0.05) * 50;
+          text("Creative Code", tX, tY);
+        pop();
+      }
+
+      // --- Cloth Simulation Setup & Update Functions ---
+      // Initialize cloth points and constraints.
+      function setupCloth() {
+        cloth = [];
+        clothConstraints = [];
+        // Create a grid of points for the cloth
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            // Position the cloth near the bottom of the canvas
+            let px = x * spacing + (windowWidth / 2 - (cols * spacing) / 2);
+            let py = y * spacing + (windowHeight - rows * spacing - 50);
+            cloth.push({
+              x: px,
+              y: py,
+              oldx: px,
+              oldy: py,
+              pinned: y === 0 // Pin the top row so the cloth hangs
+            });
+          }
+        }
+        // Create horizontal and vertical constraints between points
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            let idx = x + y * cols;
+            if (x < cols - 1) {
+              clothConstraints.push({
+                p1: idx,
+                p2: idx + 1,
+                length: spacing
+              });
+            }
+            if (y < rows - 1) {
+              clothConstraints.push({
+                p1: idx,
+                p2: idx + cols,
+                length: spacing
+              });
+            }
+          }
+        }
+      }
+
+      // Update the cloth simulation using a simple Verlet integration.
+      function updateCloth() {
+        let gravity = 0.5;
+        let friction = 0.99;
+        // Update each point’s position (if not pinned)
+        for (let p of cloth) {
+          if (!p.pinned) {
+            let vx = (p.x - p.oldx) * friction;
+            let vy = (p.y - p.oldy) * friction;
+            p.oldx = p.x;
+            p.oldy = p.y;
+            p.x += vx;
+            p.y += vy + gravity;
+          }
+        }
+        // Iteratively satisfy the constraints
+        for (let i = 0; i < 5; i++) {
+          for (let c of clothConstraints) {
+            let p1 = cloth[c.p1];
+            let p2 = cloth[c.p2];
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let dist = sqrt(dx * dx + dy * dy);
+            let diff = (dist - c.length) / dist;
+            let offsetX = dx * 0.5 * diff;
+            let offsetY = dy * 0.5 * diff;
+            if (!p1.pinned) {
+              p1.x += offsetX;
+              p1.y += offsetY;
+            }
+            if (!p2.pinned) {
+              p2.x -= offsetX;
+              p2.y -= offsetY;
+            }
+          }
+        }
+      }
+
+      // Handle window resizing.
+      function windowResized() {
+        resizeCanvas(windowWidth, windowHeight, WEBGL);
+        clothG.resizeCanvas(windowWidth, windowHeight);
+        setupCloth();
+      }
+    </script>
+  </body>
+</html>
