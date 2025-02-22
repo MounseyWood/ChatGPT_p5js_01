@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Square Cloth Simulation – Shading Toggle & Educational UI</title>
+    <title>Square Cloth Simulation – Weave Shader & Educational UI</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
@@ -14,7 +14,7 @@
         font-family: sans-serif;
         height: 100%;
       }
-      /* Side panel for UI */
+      /* Side panel */
       #uiPanel {
         position: absolute;
         top: 0;
@@ -58,8 +58,8 @@
       button:hover {
         background: #666;
       }
-      /* Make the Reset button stick to the bottom of the panel */
-      #resetBtn {
+      /* Bottom buttons (Reset & Toggle Shading) */
+      .bottomButtons {
         position: sticky;
         bottom: 20px;
         width: 100%;
@@ -77,7 +77,7 @@
     <div id="uiPanel">
       <h2>Cloth Simulation</h2>
       <p>
-        Touch/click on the cloth (in the canvas) to drag points.
+        Touch/click on the cloth (in the canvas) to drag individual points.
         Adjust the sliders to change parameters.
       </p>
       
@@ -105,25 +105,28 @@
       <label class="sliderLabel">Gravity: <span id="gravityVal"></span></label>
       <div id="gravitySlider"></div>
       
+      <!-- Toggle shading overlay -->
       <label id="shadingToggleLabel">
-        <input type="checkbox" id="shadingToggle" /> Shading Mode
+        <input type="checkbox" id="shadingToggle" /> Weave Shading Mode
       </label>
       
-      <!-- Educational explanations -->
+      <!-- Educational explanation -->
       <p id="eduText">
         <strong>Simulation Attributes:</strong><br>
-        • <strong>Damping:</strong> Controls energy loss (smooths motion).<br>
+        • <strong>Damping:</strong> Controls energy loss (smoothing motion).<br>
         • <strong>Iterations:</strong> How many times constraints are relaxed per frame.<br>
-        • <strong>Stretch:</strong> Affects how much the cloth can extend.<br>
+        • <strong>Stretch:</strong> Affects the cloth’s ability to extend.<br>
         • <strong>Shear:</strong> Resists diagonal distortion.<br>
         • <strong>Bending:</strong> Controls resistance to sharp folds.<br>
         • <strong>Weight:</strong> Modifies the downward pull.<br>
-        • <strong>Wind:</strong> Applies a horizontal force (oscillates over time).<br>
+        • <strong>Wind:</strong> Applies a horizontal oscillating force.<br>
         • <strong>Gravity:</strong> Sets the base downward acceleration.<br>
-        • <strong>Shading Mode:</strong> When enabled, the cloth is rendered with a filled overlay showing simple shading.
+        • <strong>Weave Shading:</strong> When enabled, a basket‑weave pattern is overlaid to mimic fabric texture.
       </p>
       
-      <button id="resetBtn">Reset Cloth</button>
+      <div class="bottomButtons">
+        <button id="resetBtn">Reset Cloth</button>
+      </div>
     </div>
     
     <!-- Canvas Container -->
@@ -160,26 +163,29 @@
       // For dragging
       let dragPointIndex = null;
       
-      // Optional horizontal shift so the cloth swatch is closer to the panel
+      // Shift the cloth a bit left so it’s not too far right
       let clothShiftX = -40;
       
-      // Toggle for shaded rendering
+      // Toggle for shading mode
       let shadingMode = false;
+      
+      // p5.Graphics buffer for the weave pattern
+      let pattern;
       
       function setup() {
         let cnv = createCanvas(windowWidth - 280, windowHeight);
         cnv.parent("canvasContainer");
         cnv.style("display", "block");
         createUI();
+        createWeavePattern();
         setupCloth();
       }
       
       function createUI() {
         // Reset button
-        const resetBtn = select("#resetBtn");
-        resetBtn.mousePressed(resetCloth);
+        select("#resetBtn").mousePressed(resetCloth);
         
-        // Damping
+        // Sliders
         const dampingSl = createSlider(0.90, 1.0, 0.98, 0.01)
           .parent("dampingSlider")
           .input(() => {
@@ -188,7 +194,6 @@
           });
         select("#dampingVal").html(nf(damping, 1, 2));
         
-        // Iterations
         const iterSl = createSlider(1, 10, 5, 1)
           .parent("iterationsSlider")
           .input(() => {
@@ -197,7 +202,6 @@
           });
         select("#iterationsVal").html(iterations);
         
-        // Stretch
         const stretchSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("stretchSlider")
           .input(() => {
@@ -206,7 +210,6 @@
           });
         select("#stretchVal").html(nf(stretchFactor, 1, 2));
         
-        // Shear
         const shearSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("shearSlider")
           .input(() => {
@@ -215,7 +218,6 @@
           });
         select("#shearVal").html(nf(shearFactor, 1, 2));
         
-        // Bending
         const bendSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("bendingSlider")
           .input(() => {
@@ -224,7 +226,6 @@
           });
         select("#bendingVal").html(nf(bendingFactor, 1, 2));
         
-        // Weight
         const weightSl = createSlider(0.5, 2.0, 1.0, 0.1)
           .parent("weightSlider")
           .input(() => {
@@ -233,7 +234,6 @@
           });
         select("#weightVal").html(nf(weight, 1, 2));
         
-        // Wind
         const windSl = createSlider(0, 1, 0.2, 0.01)
           .parent("windSlider")
           .input(() => {
@@ -242,7 +242,6 @@
           });
         select("#windVal").html(nf(windAmplitude, 1, 2));
         
-        // Gravity
         const gravSl = createSlider(0, 1, 0.4, 0.01)
           .parent("gravitySlider")
           .input(() => {
@@ -258,6 +257,22 @@
         });
       }
       
+      // Create a simple basket weave pattern in a p5.Graphics buffer
+      function createWeavePattern() {
+        pattern = createGraphics(50, 50);
+        pattern.background(220);  // Light background
+        pattern.stroke(150);
+        pattern.strokeWeight(4);
+        // Draw a horizontal line at half the height
+        pattern.line(0, 25, 50, 25);
+        // Draw a vertical line at half the width
+        pattern.line(25, 0, 25, 50);
+        // Optionally, add a slight diagonal for more texture:
+        pattern.strokeWeight(2);
+        pattern.line(0, 0, 50, 50);
+        pattern.line(50, 0, 0, 50);
+      }
+      
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -266,16 +281,11 @@
         vertical = [];
         centers = [];
         
-        // Get canvas dimensions (canvas is width: windowWidth-280)
         let canvasW = windowWidth - 280;
         let canvasH = windowHeight;
-        
-        // Calculate cloth swatch width (square swatch)
         let clothWidth = (cols - 1) * spacing;
-        // Center horizontally in the canvas area, then apply a leftward shift
-        let startX = (canvasW - clothWidth) / 2 + clothShiftX;
-        // Center vertically
         let clothHeight = (rows - 1) * spacing;
+        let startX = (canvasW - clothWidth) / 2 + clothShiftX;
         let startY = (canvasH - clothHeight) / 2;
         if (startY < 50) startY = 50;
         
@@ -369,7 +379,7 @@
           }
         }
         
-        // 7. Shear constraints (diagonals)
+        // 7. Shear constraints (diagonals in each cell)
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let idxA = grid[y][x];
@@ -381,7 +391,7 @@
           }
         }
         
-        // 8. Subdivide each cell into 8 triangles (for fine detail)
+        // 8. Subdivide each cell into 8 triangles for detail
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let A = grid[y][x];
@@ -448,69 +458,32 @@
         background(30);
         updateCloth();
         
+        // If shading is enabled, overlay the weave pattern.
         if (shadingMode) {
-          // Render a filled, shaded cloth swatch using the grid cells.
-          // Compute the min and max y among grid points (to map brightness)
-          let minY = Infinity, maxY = -Infinity;
-          for (let y = 0; y < rows; y++) {
-            for (let x = 0; x < cols; x++) {
-              let pt = clothPoints[grid[y][x]];
-              if (pt.y < minY) minY = pt.y;
-              if (pt.y > maxY) maxY = pt.y;
+          push();
+          blendMode(MULTIPLY);
+          for (let x = 0; x < width; x += pattern.width) {
+            for (let y = 0; y < height; y += pattern.height) {
+              image(pattern, x, y);
             }
           }
-          // Draw each cell with a fill color based on average y
-          noStroke();
-          for (let y = 0; y < rows - 1; y++) {
-            for (let x = 0; x < cols - 1; x++) {
-              let A = clothPoints[grid[y][x]];
-              let B = clothPoints[grid[y][x+1]];
-              let C = clothPoints[grid[y+1][x+1]];
-              let D = clothPoints[grid[y+1][x]];
-              let avgY = (A.y + B.y + C.y + D.y) / 4;
-              // Map average y to a brightness value (simple shading)
-              let bright = map(avgY, minY, maxY, 220, 80);
-              fill(bright, bright, bright);
-              beginShape();
-              vertex(A.x, A.y);
-              vertex(B.x, B.y);
-              vertex(C.x, C.y);
-              vertex(D.x, D.y);
-              endShape(CLOSE);
-            }
-          }
-          // Optionally, draw cell outlines.
-          stroke(255, 50);
-          strokeWeight(1);
-          noFill();
-          for (let y = 0; y < rows - 1; y++) {
-            for (let x = 0; x < cols - 1; x++) {
-              let A = clothPoints[grid[y][x]];
-              let B = clothPoints[grid[y][x+1]];
-              let C = clothPoints[grid[y+1][x+1]];
-              let D = clothPoints[grid[y+1][x]];
-              beginShape();
-              vertex(A.x, A.y);
-              vertex(B.x, B.y);
-              vertex(C.x, C.y);
-              vertex(D.x, D.y);
-              endShape(CLOSE);
-            }
-          }
-        } else {
-          // Default wireframe: draw constraints and points
-          stroke(255);
-          strokeWeight(2);
-          for (let c of clothConstraints) {
-            let p1 = clothPoints[c.p1];
-            let p2 = clothPoints[c.p2];
-            line(p1.x, p1.y, p2.x, p2.y);
-          }
-          noStroke();
-          fill(255, 0, 0);
-          for (let p of clothPoints) {
-            ellipse(p.x, p.y, 4, 4);
-          }
+          pop();
+        }
+        
+        // Draw the cloth as wireframe (constraints) on top.
+        stroke(255);
+        strokeWeight(2);
+        for (let c of clothConstraints) {
+          let p1 = clothPoints[c.p1];
+          let p2 = clothPoints[c.p2];
+          line(p1.x, p1.y, p2.x, p2.y);
+        }
+        
+        // Draw cloth points
+        noStroke();
+        fill(255, 0, 0);
+        for (let p of clothPoints) {
+          ellipse(p.x, p.y, 4, 4);
         }
       }
       
@@ -527,6 +500,7 @@
             p.y += vy + gravity * weight;
           }
         }
+        
         // Constraint relaxation
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
@@ -548,6 +522,7 @@
             }
           }
         }
+        
         doSelfCollision();
       }
       
