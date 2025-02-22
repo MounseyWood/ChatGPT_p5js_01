@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Cloth Simulation – Centered Layout & Reordered Sliders</title>
+    <title>Cloth Simulation – Refined Layout</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
@@ -49,6 +49,11 @@
         margin-bottom: 8px;
       }
 
+      .sliderLabel {
+        display: block;
+        margin-top: 12px;
+      }
+
       button {
         margin-bottom: 10px;
         padding: 8px 12px;
@@ -61,9 +66,11 @@
         background: #666;
       }
 
-      .sliderLabel {
-        display: block;
-        margin-top: 12px;
+      /* Position the reset button at the bottom of the panel */
+      #resetBtn {
+        position: sticky;
+        bottom: 0;
+        margin-top: 20px;
       }
     </style>
   </head>
@@ -71,7 +78,10 @@
     <!-- Side Panel for UI -->
     <div id="uiPanel">
       <h2>Cloth Simulation</h2>
-      <button id="resetBtn">Reset Cloth</button>
+      <p>
+        Touch or click on the cloth to drag individual points.
+        Move the sliders to see how each parameter affects the simulation.
+      </p>
 
       <label class="sliderLabel">Damping (Friction): <span id="dampingVal"></span></label>
       <div id="dampingSlider"></div>
@@ -97,18 +107,7 @@
       <label class="sliderLabel">Gravity: <span id="gravityVal"></span></label>
       <div id="gravitySlider"></div>
 
-      <p style="margin-top: 20px;">
-        Adjust these sliders to see how different parameters affect the cloth.
-        <br><br>
-        • <strong>Damping</strong> reduces velocity each frame.  
-        • <strong>Iterations</strong> is how many times we relax constraints.  
-        • <strong>Stretch, Shear, Bending</strong> control how the cloth resists various deformations.  
-        • <strong>Weight</strong> modifies the downward pull.  
-        • <strong>Wind</strong> applies a gentle horizontal force.  
-        • <strong>Gravity</strong> sets the base downward acceleration.  
-        <br><br>
-        Click or tap the cloth to drag points around!
-      </p>
+      <button id="resetBtn">Reset Cloth</button>
     </div>
 
     <!-- Canvas Container -->
@@ -146,6 +145,10 @@
 
       // For dragging points
       let dragPointIndex = null;
+
+      // A small horizontal shift so the cloth isn’t too far right
+      // (Increase this shift if you want it closer to the panel)
+      let clothShiftX = -80;
 
       function setup() {
         // Create the p5 canvas in the canvasContainer
@@ -248,16 +251,15 @@
         let canvasW = windowWidth - 280;
         let canvasH = windowHeight;
 
-        // We want to center the cloth horizontally in that canvas area
-        // cloth width = (cols - 1) * spacing
-        // So the left edge is: (canvasW - clothWidth)/2
+        // Cloth width in pixels
         let clothWidth = (cols - 1) * spacing;
-        let startX = 280 + (canvasW - clothWidth) / 2;
+        // Center it horizontally, then shift left a bit
+        let startX = (canvasW - clothWidth) / 2 + clothShiftX;
 
-        // You can adjust startY to place the cloth higher or lower
-        let startY = (canvasH - (rows - 1) * spacing) / 2;
+        // Center it vertically (unless the cloth is tall)
+        let clothHeight = (rows - 1) * spacing;
+        let startY = (canvasH - clothHeight) / 2;
         if (startY < 50) {
-          // If the cloth is tall, you might keep a minimum offset
           startY = 50;
         }
 
@@ -267,7 +269,7 @@
           for (let x = 0; x < cols; x++) {
             let px = startX + x * spacing;
             let py = startY + y * spacing;
-            let pinned = (y === 0); // top row pinned
+            let pinned = (y === 0);
             clothPoints.push({ x: px, y: py, oldx: px, oldy: py, pinned: pinned });
             grid[y][x] = clothPoints.length - 1;
           }
@@ -522,7 +524,6 @@
       // Mouse / touch dragging
       function mousePressed() {
         // Only allow dragging if in the canvas area (not in the UI panel)
-        // and below some vertical offset if desired
         if (mouseX > 280) {
           let nearestIndex = -1;
           let nearestDist = Infinity;
