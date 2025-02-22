@@ -2,8 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Square Cloth Simulation – Weave Shader & Educational UI</title>
-    <!-- p5.js library -->
+    <title>Square Cloth Simulation – Masked Weave Pattern</title>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
       body, html {
@@ -14,34 +13,26 @@
         font-family: sans-serif;
         height: 100%;
       }
-      /* Side panel */
       #uiPanel {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 280px;
-        height: 100%;
+        top: 0; left: 0;
+        width: 280px; height: 100%;
         background: #222;
         box-shadow: 2px 0 8px rgba(0,0,0,0.5);
         padding: 20px;
         box-sizing: border-box;
         overflow-y: auto;
       }
-      /* Canvas container */
       #canvasContainer {
         position: absolute;
-        top: 0;
-        left: 280px;
+        top: 0; left: 280px;
         width: calc(100% - 280px);
         height: 100%;
         overflow: hidden;
       }
-      h2 {
-        margin-top: 0;
-      }
+      h2 { margin-top: 0; }
       p, label {
-        font-size: 14px;
-        line-height: 1.4em;
+        font-size: 14px; line-height: 1.4em;
         margin-bottom: 8px;
       }
       .sliderLabel {
@@ -54,99 +45,83 @@
         color: #fff;
         border: none;
         cursor: pointer;
+        margin-bottom: 10px;
       }
       button:hover {
         background: #666;
       }
-      /* Bottom buttons (Reset & Toggle Shading) */
+      /* Bottom area for the Reset button, etc. */
       .bottomButtons {
         position: sticky;
         bottom: 20px;
         width: 100%;
       }
-      /* Shading toggle styling */
-      #shadingToggleLabel {
-        display: block;
-        margin-top: 12px;
-        font-weight: bold;
-      }
     </style>
   </head>
   <body>
-    <!-- Side Panel for UI -->
     <div id="uiPanel">
       <h2>Cloth Simulation</h2>
       <p>
-        Touch/click on the cloth (in the canvas) to drag individual points.
-        Adjust the sliders to change parameters.
+        Touch/click on the cloth (in the canvas) to drag points.  
+        Adjust the sliders to see how each parameter affects the simulation.  
       </p>
-      
+
       <label class="sliderLabel">Damping (Friction): <span id="dampingVal"></span></label>
       <div id="dampingSlider"></div>
-      
+
       <label class="sliderLabel">Iterations: <span id="iterationsVal"></span></label>
       <div id="iterationsSlider"></div>
-      
+
       <label class="sliderLabel">Stretch: <span id="stretchVal"></span></label>
       <div id="stretchSlider"></div>
-      
+
       <label class="sliderLabel">Shear: <span id="shearVal"></span></label>
       <div id="shearSlider"></div>
-      
+
       <label class="sliderLabel">Bending: <span id="bendingVal"></span></label>
       <div id="bendingSlider"></div>
-      
+
       <label class="sliderLabel">Weight: <span id="weightVal"></span></label>
       <div id="weightSlider"></div>
-      
+
       <label class="sliderLabel">Wind: <span id="windVal"></span></label>
       <div id="windSlider"></div>
-      
+
       <label class="sliderLabel">Gravity: <span id="gravityVal"></span></label>
       <div id="gravitySlider"></div>
-      
-      <!-- Toggle shading overlay -->
-      <label id="shadingToggleLabel">
-        <input type="checkbox" id="shadingToggle" /> Weave Shading Mode
+
+      <label class="sliderLabel">
+        <input type="checkbox" id="showPattern" />
+        Show Weave Pattern
       </label>
-      
-      <!-- Educational explanation -->
-      <p id="eduText">
-        <strong>Simulation Attributes:</strong><br>
-        • <strong>Damping:</strong> Controls energy loss (smoothing motion).<br>
-        • <strong>Iterations:</strong> How many times constraints are relaxed per frame.<br>
-        • <strong>Stretch:</strong> Affects the cloth’s ability to extend.<br>
-        • <strong>Shear:</strong> Resists diagonal distortion.<br>
-        • <strong>Bending:</strong> Controls resistance to sharp folds.<br>
-        • <strong>Weight:</strong> Modifies the downward pull.<br>
-        • <strong>Wind:</strong> Applies a horizontal oscillating force.<br>
-        • <strong>Gravity:</strong> Sets the base downward acceleration.<br>
-        • <strong>Weave Shading:</strong> When enabled, a basket‑weave pattern is overlaid to mimic fabric texture.
+
+      <p>
+        <strong>Note:</strong> This approach clips the weave pattern to the cloth’s shape (a “stencil”).  
+        It is not true texture mapping, so the pattern does not warp with each triangle.
       </p>
-      
+
       <div class="bottomButtons">
         <button id="resetBtn">Reset Cloth</button>
       </div>
     </div>
-    
-    <!-- Canvas Container -->
+
     <div id="canvasContainer"></div>
-    
+
     <script>
-      // Use a square swatch: 20 columns × 20 rows
+      // Square cloth: 20 x 20 points
       let cols = 20;
       let rows = 20;
       let spacing = 20;
-      
+
       let clothPoints = [];
       let clothConstraints = [];
-      
+
       let grid = [];
       let horizontal = [];
       let vertical = [];
       let centers = [];
-      
-      // Simulation parameters (default values, updated by sliders)
+
+      // Sliders / parameters
       let damping = 0.98;
       let iterations = 5;
       let stretchFactor = 1.0;
@@ -155,37 +130,40 @@
       let weight = 1.0;
       let windAmplitude = 0.2;
       let gravity = 0.4;
-      
-      // Self-collision parameters
+
+      // Self-collision
       let collisionThreshold = spacing * 0.5;
       let repulsionFactor = 0.5;
-      
-      // For dragging
+
+      // For dragging points
       let dragPointIndex = null;
-      
-      // Shift the cloth a bit left so it’s not too far right
+
+      // A small shift so the cloth is not too far right
       let clothShiftX = -40;
-      
-      // Toggle for shading mode
-      let shadingMode = false;
-      
-      // p5.Graphics buffer for the weave pattern
-      let pattern;
-      
+
+      // Toggling the weave pattern overlay
+      let showWeave = false;
+
+      // Off-screen buffers
+      let weavePattern;    // The repeating tile pattern
+      let patternTiled;    // Tiled across the whole screen
+      let clothMask;       // White area where the cloth is
+
       function setup() {
         let cnv = createCanvas(windowWidth - 280, windowHeight);
         cnv.parent("canvasContainer");
         cnv.style("display", "block");
+
         createUI();
-        createWeavePattern();
+        createWeavePattern(); // Build a tile for the weave pattern
         setupCloth();
       }
-      
+
       function createUI() {
-        // Reset button
+        // Reset
         select("#resetBtn").mousePressed(resetCloth);
-        
-        // Sliders
+
+        // Damping slider
         const dampingSl = createSlider(0.90, 1.0, 0.98, 0.01)
           .parent("dampingSlider")
           .input(() => {
@@ -193,7 +171,8 @@
             select("#dampingVal").html(nf(damping, 1, 2));
           });
         select("#dampingVal").html(nf(damping, 1, 2));
-        
+
+        // Iterations slider
         const iterSl = createSlider(1, 10, 5, 1)
           .parent("iterationsSlider")
           .input(() => {
@@ -201,7 +180,8 @@
             select("#iterationsVal").html(iterations);
           });
         select("#iterationsVal").html(iterations);
-        
+
+        // Stretch slider
         const stretchSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("stretchSlider")
           .input(() => {
@@ -209,7 +189,8 @@
             select("#stretchVal").html(nf(stretchFactor, 1, 2));
           });
         select("#stretchVal").html(nf(stretchFactor, 1, 2));
-        
+
+        // Shear slider
         const shearSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("shearSlider")
           .input(() => {
@@ -217,7 +198,8 @@
             select("#shearVal").html(nf(shearFactor, 1, 2));
           });
         select("#shearVal").html(nf(shearFactor, 1, 2));
-        
+
+        // Bending slider
         const bendSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("bendingSlider")
           .input(() => {
@@ -225,7 +207,8 @@
             select("#bendingVal").html(nf(bendingFactor, 1, 2));
           });
         select("#bendingVal").html(nf(bendingFactor, 1, 2));
-        
+
+        // Weight slider
         const weightSl = createSlider(0.5, 2.0, 1.0, 0.1)
           .parent("weightSlider")
           .input(() => {
@@ -233,7 +216,8 @@
             select("#weightVal").html(nf(weight, 1, 2));
           });
         select("#weightVal").html(nf(weight, 1, 2));
-        
+
+        // Wind slider
         const windSl = createSlider(0, 1, 0.2, 0.01)
           .parent("windSlider")
           .input(() => {
@@ -241,7 +225,8 @@
             select("#windVal").html(nf(windAmplitude, 1, 2));
           });
         select("#windVal").html(nf(windAmplitude, 1, 2));
-        
+
+        // Gravity slider
         const gravSl = createSlider(0, 1, 0.4, 0.01)
           .parent("gravitySlider")
           .input(() => {
@@ -249,30 +234,30 @@
             select("#gravityVal").html(nf(gravity, 1, 2));
           });
         select("#gravityVal").html(nf(gravity, 1, 2));
-        
-        // Shading toggle
-        const shadingToggle = select("#shadingToggle");
-        shadingToggle.changed(() => {
-          shadingMode = shadingToggle.elt.checked;
+
+        // Weave pattern toggle
+        const patternChk = select("#showPattern");
+        patternChk.changed(() => {
+          showWeave = patternChk.elt.checked;
         });
       }
-      
-      // Create a simple basket weave pattern in a p5.Graphics buffer
+
+      // Create a tile for the weave pattern
       function createWeavePattern() {
-        pattern = createGraphics(50, 50);
-        pattern.background(220);  // Light background
-        pattern.stroke(150);
-        pattern.strokeWeight(4);
-        // Draw a horizontal line at half the height
-        pattern.line(0, 25, 50, 25);
-        // Draw a vertical line at half the width
-        pattern.line(25, 0, 25, 50);
-        // Optionally, add a slight diagonal for more texture:
-        pattern.strokeWeight(2);
-        pattern.line(0, 0, 50, 50);
-        pattern.line(50, 0, 0, 50);
+        weavePattern = createGraphics(50, 50);
+        weavePattern.background(220); // light background
+        weavePattern.stroke(160);
+        weavePattern.strokeWeight(4);
+        // Horizontal line
+        weavePattern.line(0, 25, 50, 25);
+        // Vertical line
+        weavePattern.line(25, 0, 25, 50);
+        // Optional diagonal lines
+        weavePattern.strokeWeight(2);
+        weavePattern.line(0, 0, 50, 50);
+        weavePattern.line(50, 0, 0, 50);
       }
-      
+
       function setupCloth() {
         clothPoints = [];
         clothConstraints = [];
@@ -280,16 +265,16 @@
         horizontal = [];
         vertical = [];
         centers = [];
-        
-        let canvasW = windowWidth - 280;
-        let canvasH = windowHeight;
+
+        let canvasW = width;
+        let canvasH = height;
         let clothWidth = (cols - 1) * spacing;
         let clothHeight = (rows - 1) * spacing;
         let startX = (canvasW - clothWidth) / 2 + clothShiftX;
         let startY = (canvasH - clothHeight) / 2;
         if (startY < 50) startY = 50;
-        
-        // 1. Create grid corner points.
+
+        // 1. Grid corner points
         for (let y = 0; y < rows; y++) {
           grid[y] = [];
           for (let x = 0; x < cols; x++) {
@@ -300,8 +285,8 @@
             grid[y][x] = clothPoints.length - 1;
           }
         }
-        
-        // 2. Horizontal midpoints.
+
+        // 2. Horizontal midpoints
         for (let y = 0; y < rows; y++) {
           horizontal[y] = [];
           for (let x = 0; x < cols - 1; x++) {
@@ -315,13 +300,13 @@
             horizontal[y][x] = clothPoints.length - 1;
           }
         }
-        
-        // 3. Vertical midpoints.
+
+        // 3. Vertical midpoints
         for (let y = 0; y < rows - 1; y++) {
           vertical[y] = [];
           for (let x = 0; x < cols; x++) {
             let idxA = grid[y][x];
-            let idxB = grid[y+1][x];
+            let idxB = grid[y + 1][x];
             let A = clothPoints[idxA];
             let B = clothPoints[idxB];
             let mx = (A.x + B.x) / 2;
@@ -330,15 +315,15 @@
             vertical[y][x] = clothPoints.length - 1;
           }
         }
-        
-        // 4. Cell centers.
+
+        // 4. Cell centers
         for (let y = 0; y < rows - 1; y++) {
           centers[y] = [];
           for (let x = 0; x < cols - 1; x++) {
             let idxA = grid[y][x];
-            let idxB = grid[y][x+1];
-            let idxC = grid[y+1][x];
-            let idxD = grid[y+1][x+1];
+            let idxB = grid[y][x + 1];
+            let idxC = grid[y + 1][x];
+            let idxD = grid[y + 1][x + 1];
             let A = clothPoints[idxA];
             let B = clothPoints[idxB];
             let C = clothPoints[idxC];
@@ -349,7 +334,7 @@
             centers[y][x] = clothPoints.length - 1;
           }
         }
-        
+
         // 5. Structural constraints (Stretch)
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
@@ -362,7 +347,7 @@
             }
           }
         }
-        
+
         // 6. Bending constraints (two apart)
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols - 2; x++) {
@@ -378,8 +363,8 @@
             addConstraint(idx1, idx2, spacing * 2 * bendingFactor);
           }
         }
-        
-        // 7. Shear constraints (diagonals in each cell)
+
+        // 7. Shear constraints (diagonals)
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let idxA = grid[y][x];
@@ -390,8 +375,8 @@
             addConstraint(idxB, idxC, sqrt(2) * spacing * shearFactor);
           }
         }
-        
-        // 8. Subdivide each cell into 8 triangles for detail
+
+        // 8. Subdivide each cell into 8 triangles
         for (let y = 0; y < rows - 1; y++) {
           for (let x = 0; x < cols - 1; x++) {
             let A = grid[y][x];
@@ -403,42 +388,42 @@
             let G = vertical[y][x];
             let H = vertical[y][x+1];
             let I = centers[y][x];
-            
+
             addConstraint(A, E, distBetween(A, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, A, distBetween(I, A));
-            
+
             addConstraint(A, G, distBetween(A, G));
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, A, distBetween(I, A));
-            
+
             addConstraint(B, E, distBetween(B, E));
             addConstraint(E, I, distBetween(E, I));
             addConstraint(I, B, distBetween(I, B));
-            
+
             addConstraint(B, H, distBetween(B, H));
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, B, distBetween(I, B));
-            
+
             addConstraint(C, G, distBetween(C, G));
             addConstraint(G, I, distBetween(G, I));
             addConstraint(I, C, distBetween(I, C));
-            
+
             addConstraint(C, F, distBetween(C, F));
             addConstraint(F, I, distBetween(F, I));
             addConstraint(I, C, distBetween(I, C));
-            
+
             addConstraint(D, H, distBetween(D, H));
             addConstraint(H, I, distBetween(H, I));
             addConstraint(I, D, distBetween(I, D));
-            
+
             addConstraint(D, F, distBetween(D, F));
             addConstraint(F, I, distBetween(F, I));
             addConstraint(I, D, distBetween(I, D));
           }
         }
       }
-      
+
       function addConstraint(i, j, len) {
         let a = min(i, j);
         let b = max(i, j);
@@ -447,30 +432,68 @@
         }
         clothConstraints.push({ p1: a, p2: b, length: len });
       }
-      
+
       function distBetween(i1, i2) {
         let p1 = clothPoints[i1];
         let p2 = clothPoints[i2];
         return sqrt(sq(p2.x - p1.x) + sq(p2.y - p1.y));
       }
-      
+
       function draw() {
         background(30);
         updateCloth();
-        
-        // If shading is enabled, overlay the weave pattern.
-        if (shadingMode) {
-          push();
-          blendMode(MULTIPLY);
-          for (let x = 0; x < width; x += pattern.width) {
-            for (let y = 0; y < height; y += pattern.height) {
-              image(pattern, x, y);
+
+        // 1) If user wants the weave pattern, first create a mask of the cloth shape
+        //    and tile the pattern across the screen. Then apply the mask.
+        if (showWeave) {
+          // A) Create / clear buffers (same size as canvas)
+          patternTiled = createGraphics(width, height);
+          clothMask   = createGraphics(width, height);
+
+          // B) Tile the weave pattern across patternTiled
+          for (let tx = 0; tx < width; tx += weavePattern.width) {
+            for (let ty = 0; ty < height; ty += weavePattern.height) {
+              patternTiled.image(weavePattern, tx, ty);
             }
           }
-          pop();
+
+          // C) Draw the cloth shape (triangles) in clothMask as white
+          clothMask.background(0);
+          clothMask.noStroke();
+          clothMask.fill(255);
+
+          // We'll draw each cell as two triangles: (A,B,C) and (A,C,D)
+          for (let y = 0; y < rows - 1; y++) {
+            for (let x = 0; x < cols - 1; x++) {
+              let A = clothPoints[grid[y][x]];
+              let B = clothPoints[grid[y][x+1]];
+              let C = clothPoints[grid[y+1][x+1]];
+              let D = clothPoints[grid[y+1][x]];
+
+              // Triangle 1: A,B,C
+              clothMask.beginShape();
+              clothMask.vertex(A.x, A.y);
+              clothMask.vertex(B.x, B.y);
+              clothMask.vertex(C.x, C.y);
+              clothMask.endShape(CLOSE);
+
+              // Triangle 2: A,C,D
+              clothMask.beginShape();
+              clothMask.vertex(A.x, A.y);
+              clothMask.vertex(C.x, C.y);
+              clothMask.vertex(D.x, D.y);
+              clothMask.endShape(CLOSE);
+            }
+          }
+
+          // D) Apply the mask to patternTiled
+          patternTiled.mask(clothMask);
+
+          // E) Draw the masked pattern
+          image(patternTiled, 0, 0);
         }
-        
-        // Draw the cloth as wireframe (constraints) on top.
+
+        // 2) Draw cloth constraints (wireframe) on top
         stroke(255);
         strokeWeight(2);
         for (let c of clothConstraints) {
@@ -478,17 +501,17 @@
           let p2 = clothPoints[c.p2];
           line(p1.x, p1.y, p2.x, p2.y);
         }
-        
-        // Draw cloth points
+
+        // 3) Draw cloth points
         noStroke();
         fill(255, 0, 0);
         for (let p of clothPoints) {
           ellipse(p.x, p.y, 4, 4);
         }
       }
-      
+
       function updateCloth() {
-        // Verlet integration with wind
+        // Verlet integration + wind
         for (let p of clothPoints) {
           if (!p.pinned) {
             let vx = (p.x - p.oldx) * damping;
@@ -500,7 +523,7 @@
             p.y += vy + gravity * weight;
           }
         }
-        
+
         // Constraint relaxation
         for (let i = 0; i < iterations; i++) {
           for (let c of clothConstraints) {
@@ -522,10 +545,11 @@
             }
           }
         }
-        
+
+        // Self-collision
         doSelfCollision();
       }
-      
+
       function doSelfCollision() {
         for (let i = 0; i < clothPoints.length; i++) {
           for (let j = i + 1; j < clothPoints.length; j++) {
@@ -553,8 +577,8 @@
           }
         }
       }
-      
-      // Dragging
+
+      // Mouse / touch dragging
       function mousePressed() {
         if (mouseX > 280) {
           let nearestIndex = -1;
@@ -572,7 +596,7 @@
           }
         }
       }
-      
+
       function mouseDragged() {
         if (dragPointIndex !== null) {
           let p = clothPoints[dragPointIndex];
@@ -580,15 +604,15 @@
           p.y = mouseY;
         }
       }
-      
+
       function mouseReleased() {
         dragPointIndex = null;
       }
-      
+
       function resetCloth() {
         setupCloth();
       }
-      
+
       function windowResized() {
         resizeCanvas(windowWidth - 280, windowHeight);
         setupCloth();
