@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Square Cloth Simulation – Shading Toggle & Educational UI</title>
+    <title>Square Cloth Simulation – Shading Toggle, Educational UI & Pinning Mode</title>
     <!-- p5.js library -->
     <script src="https://cdn.jsdelivr.net/npm/p5@1.5.0/lib/p5.min.js"></script>
     <style>
@@ -54,6 +54,7 @@
         color: #fff;
         border: none;
         cursor: pointer;
+        margin-bottom: 10px;
       }
       button:hover {
         background: #666;
@@ -70,6 +71,10 @@
         margin-top: 12px;
         font-weight: bold;
       }
+      /* Pinning mode radio styling */
+      #pinningRadio {
+        margin-top: 12px;
+      }
     </style>
   </head>
   <body>
@@ -80,6 +85,10 @@
         Touch/click on the cloth (in the canvas) to drag points.
         Adjust the sliders to change parameters.
       </p>
+      
+      <!-- New Pinning Mode Option -->
+      <label class="sliderLabel">Pinning Mode:</label>
+      <div id="pinningRadio"></div>
       
       <label class="sliderLabel">Damping (Friction): <span id="dampingVal"></span></label>
       <div id="dampingSlider"></div>
@@ -120,7 +129,8 @@
         • <strong>Weight:</strong> Modifies the downward pull.<br>
         • <strong>Wind:</strong> Applies a horizontal force (oscillates over time).<br>
         • <strong>Gravity:</strong> Sets the base downward acceleration.<br>
-        • <strong>Shading Mode:</strong> When enabled, the cloth is rendered with a filled overlay showing simple shading.
+        • <strong>Shading Mode:</strong> When enabled, the cloth is rendered with a filled overlay showing simple shading.<br>
+        • <strong>Pinning Mode:</strong> Choose whether the cloth is pinned across the top or at its corners.
       </p>
       
       <button id="resetBtn">Reset Cloth</button>
@@ -130,7 +140,7 @@
     <div id="canvasContainer"></div>
     
     <script>
-      // Use a square swatch: 20 columns × 20 rows
+      // Square cloth: 20 columns × 20 rows
       let cols = 20;
       let rows = 20;
       let spacing = 20;
@@ -157,14 +167,17 @@
       let collisionThreshold = spacing * 0.5;
       let repulsionFactor = 0.5;
       
-      // For dragging
+      // For dragging points
       let dragPointIndex = null;
       
-      // Optional horizontal shift so the cloth swatch is closer to the panel
+      // Optional horizontal shift so the cloth swatch is not too far right
       let clothShiftX = -40;
       
       // Toggle for shaded rendering
       let shadingMode = false;
+      
+      // New: pinning mode option (default "top")
+      let pinningMode = "top";
       
       function setup() {
         let cnv = createCanvas(windowWidth - 280, windowHeight);
@@ -179,7 +192,17 @@
         const resetBtn = select("#resetBtn");
         resetBtn.mousePressed(resetCloth);
         
-        // Damping
+        // Create radio buttons for pinning mode in the "pinningRadio" div
+        const pinningRadio = createRadio();
+        pinningRadio.option("top", "Top Pinned");
+        pinningRadio.option("corners", "Corner Pinned");
+        pinningRadio.selected("top");
+        pinningRadio.parent("pinningRadio");
+        pinningRadio.changed(() => {
+          pinningMode = pinningRadio.value();
+        });
+        
+        // Damping slider
         const dampingSl = createSlider(0.90, 1.0, 0.98, 0.01)
           .parent("dampingSlider")
           .input(() => {
@@ -188,7 +211,7 @@
           });
         select("#dampingVal").html(nf(damping, 1, 2));
         
-        // Iterations
+        // Iterations slider
         const iterSl = createSlider(1, 10, 5, 1)
           .parent("iterationsSlider")
           .input(() => {
@@ -197,7 +220,7 @@
           });
         select("#iterationsVal").html(iterations);
         
-        // Stretch
+        // Stretch slider
         const stretchSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("stretchSlider")
           .input(() => {
@@ -206,7 +229,7 @@
           });
         select("#stretchVal").html(nf(stretchFactor, 1, 2));
         
-        // Shear
+        // Shear slider
         const shearSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("shearSlider")
           .input(() => {
@@ -215,7 +238,7 @@
           });
         select("#shearVal").html(nf(shearFactor, 1, 2));
         
-        // Bending
+        // Bending slider
         const bendSl = createSlider(0.8, 1.2, 1.0, 0.01)
           .parent("bendingSlider")
           .input(() => {
@@ -224,7 +247,7 @@
           });
         select("#bendingVal").html(nf(bendingFactor, 1, 2));
         
-        // Weight
+        // Weight slider
         const weightSl = createSlider(0.5, 2.0, 1.0, 0.1)
           .parent("weightSlider")
           .input(() => {
@@ -233,7 +256,7 @@
           });
         select("#weightVal").html(nf(weight, 1, 2));
         
-        // Wind
+        // Wind slider
         const windSl = createSlider(0, 1, 0.2, 0.01)
           .parent("windSlider")
           .input(() => {
@@ -242,7 +265,7 @@
           });
         select("#windVal").html(nf(windAmplitude, 1, 2));
         
-        // Gravity
+        // Gravity slider
         const gravSl = createSlider(0, 1, 0.4, 0.01)
           .parent("gravitySlider")
           .input(() => {
@@ -266,26 +289,29 @@
         vertical = [];
         centers = [];
         
-        // Get canvas dimensions (canvas is width: windowWidth-280)
         let canvasW = windowWidth - 280;
         let canvasH = windowHeight;
-        
-        // Calculate cloth swatch width (square swatch)
         let clothWidth = (cols - 1) * spacing;
-        // Center horizontally in the canvas area, then apply a leftward shift
-        let startX = (canvasW - clothWidth) / 2 + clothShiftX;
-        // Center vertically
         let clothHeight = (rows - 1) * spacing;
+        let startX = (canvasW - clothWidth) / 2 + clothShiftX;
         let startY = (canvasH - clothHeight) / 2;
         if (startY < 50) startY = 50;
         
-        // 1. Create grid corner points.
+        // 1. Create grid corner points with pinning depending on mode.
         for (let y = 0; y < rows; y++) {
           grid[y] = [];
           for (let x = 0; x < cols; x++) {
             let px = startX + x * spacing;
             let py = startY + y * spacing;
-            let pinned = (y === 0);
+            let pinned = false;
+            if (pinningMode === "top") {
+              pinned = (y === 0);
+            } else if (pinningMode === "corners") {
+              pinned = ( (x === 0 && y === 0) ||
+                         (x === cols - 1 && y === 0) ||
+                         (x === 0 && y === rows - 1) ||
+                         (x === cols - 1 && y === rows - 1) );
+            }
             clothPoints.push({ x: px, y: py, oldx: px, oldy: py, pinned: pinned });
             grid[y][x] = clothPoints.length - 1;
           }
@@ -449,8 +475,7 @@
         updateCloth();
         
         if (shadingMode) {
-          // Render a filled, shaded cloth swatch using the grid cells.
-          // Compute the min and max y among grid points (to map brightness)
+          // Draw simple gray-scale shading: fill each cell based on average Y.
           let minY = Infinity, maxY = -Infinity;
           for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
@@ -459,7 +484,6 @@
               if (pt.y > maxY) maxY = pt.y;
             }
           }
-          // Draw each cell with a fill color based on average y
           noStroke();
           for (let y = 0; y < rows - 1; y++) {
             for (let x = 0; x < cols - 1; x++) {
@@ -468,9 +492,8 @@
               let C = clothPoints[grid[y+1][x+1]];
               let D = clothPoints[grid[y+1][x]];
               let avgY = (A.y + B.y + C.y + D.y) / 4;
-              // Map average y to a brightness value (simple shading)
               let bright = map(avgY, minY, maxY, 220, 80);
-              fill(bright, bright, bright);
+              fill(bright);
               beginShape();
               vertex(A.x, A.y);
               vertex(B.x, B.y);
@@ -479,7 +502,7 @@
               endShape(CLOSE);
             }
           }
-          // Optionally, draw cell outlines.
+          // Optionally draw cell outlines.
           stroke(255, 50);
           strokeWeight(1);
           noFill();
@@ -498,7 +521,7 @@
             }
           }
         } else {
-          // Default wireframe: draw constraints and points
+          // Default wireframe view
           stroke(255);
           strokeWeight(2);
           for (let c of clothConstraints) {
@@ -579,7 +602,7 @@
         }
       }
       
-      // Dragging
+      // Mouse / touch dragging
       function mousePressed() {
         if (mouseX > 280) {
           let nearestIndex = -1;
